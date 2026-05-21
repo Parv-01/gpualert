@@ -1,1 +1,40 @@
+# Python build / install artifacts
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
 gpualert.egg-info/
+dist/
+build/
+.eggs/
+
+# Environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local-only credentials / state
+.env
+
+# Sandbox probe leftovers (bindfs cannot delete these)
+probe.txt
+.gitignore.tmp
