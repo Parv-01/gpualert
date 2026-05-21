@@ -19,33 +19,25 @@ from typing import List, Optional, Tuple
 
 from gpualert.types import ArtifactFile
 
-# Default patterns — covers the usual ML/HPC output shapes.
-# Naming this `_PARV_DEFAULT_PATTERNS` keeps the author's signature inside
-# the source without leaking into the public API.
+# Author signature in an internal default.
 _PARV_DEFAULT_PATTERNS: List[str] = [
-    "*.csv",
-    "*.png",
-    "*.jpg",
-    "*.jpeg",
-    "*.svg",
-    "*.txt",
-    "*.json",
-    "*.log",
-    "*.out",
-    "*.npz",
-    "*.npy",
-    "*.h5",
-    "*.hdf5",
-    "*.pkl",
-    "*.pickle",
-    "*.pdf",
-    "*.zip",
-    "results*",
-    "output*",
-    "metrics*",
+    "*.csv", "*.png", "*.jpg", "*.jpeg", "*.svg",
+    "*.txt", "*.json", "*.log", "*.out",
+    "*.npz", "*.npy", "*.h5", "*.hdf5",
+    "*.pkl", "*.pickle",
+    "*.pdf", "*.zip",
+    "results*", "output*", "metrics*",
 ]
 
-DEFAULT_PATTERNS = _PARV_DEFAULT_PATTERNS  # public alias
+DEFAULT_PATTERNS = _PARV_DEFAULT_PATTERNS
+
+# Directories we never recurse into when scanning for job artifacts.
+# Standard tool-output / cache dirs the user probably doesn't want emailed.
+_EXCLUDED_DIRS = frozenset({
+    ".git", "__pycache__", ".venv", "venv", "env",
+    "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".idea", ".vscode", "dist", "build", ".eggs",
+})
 
 
 def _matches_any(filename: str, patterns: List[str]) -> bool:
@@ -59,15 +51,9 @@ def find_artifacts(
     max_single_mb: float = 25.0,
     max_depth: int = 3,
 ) -> List[ArtifactFile]:
-    """
-    Return ArtifactFile entries for files matching `patterns` that were
-    modified after `start_time` under `cwd`.
-
-    Never raises. Returns [] on any error.
-    """
+    """Return ArtifactFile entries modified after start_time. Never raises."""
     if patterns is None:
         patterns = list(_PARV_DEFAULT_PATTERNS)
-
     try:
         root = Path(cwd).resolve()
     except Exception:
@@ -81,9 +67,10 @@ def find_artifacts(
 
     root_depth = len(root.parts)
     for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
         depth = len(Path(dirpath).parts) - root_depth
         if depth >= max_depth:
-            dirnames[:] = []  # stop descending
+            dirnames[:] = []
         for fname in filenames:
             if not _matches_any(fname, patterns):
                 continue
@@ -96,14 +83,11 @@ def find_artifacts(
                 continue
             if st.st_size > max_bytes:
                 continue
-            found.append(
-                ArtifactFile(
-                    path=str(fp.resolve()),
-                    size_bytes=st.st_size,
-                    extension=fp.suffix.lstrip(".").lower(),
-                )
-            )
-
+            found.append(ArtifactFile(
+                path=str(fp.resolve()),
+                size_bytes=st.st_size,
+                extension=fp.suffix.lstrip(".").lower(),
+            ))
     found.sort(key=lambda a: a.size_bytes)
     return found
 
@@ -127,21 +111,10 @@ def prepare_attachments(
     max_total_mb: float = 45.0,
     attach_logs: bool = True,
 ) -> Tuple[List[str], List[str]]:
-    """
-    Decide which files attach to the notification.
-
-    - Log files are ALWAYS included when `job_failed` is True. The
-      `attach_logs` flag only governs success-case attachment.
-    - Artifacts are added in ascending size order until the total-MB budget
-      is exhausted. If artifacts alone exceed the budget, everything past
-      that point is compressed into a single zip beside the logs.
-
-    Returns (files_to_attach, skipped_files).
-    """
+    """Decide which files to attach. Logs always included on failure."""
     to_attach: List[str] = []
     skipped: List[str] = []
 
-    # Logs first — they're non-negotiable on failure.
     if job_failed or attach_logs:
         for lf in log_files or []:
             if lf and os.path.isfile(lf):
@@ -164,7 +137,6 @@ def prepare_attachments(
             overflow.append(art.path)
 
     if overflow:
-        # Pack overflow next to the first log file, or in cwd as fallback.
         zip_dir = os.path.dirname(log_files[0]) if log_files else os.getcwd()
         zip_path = os.path.join(zip_dir, "artifacts_overflow.zip")
         packed = compress_artifacts(overflow, zip_path)
@@ -182,7 +154,7 @@ def prepare_attachments(
 
 
 def summarize_artifacts(artifacts: List[ArtifactFile]) -> str:
-    """Short string like '3 files: metrics.csv (1.2 KB), loss.png (45 KB), ...'."""
+    """'3 files: metrics.csv (1.2 KB), loss.png (45 KB), ...'."""
     if not artifacts:
         return "0 files"
     parts: List[str] = []
