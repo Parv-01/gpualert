@@ -48,8 +48,11 @@ dev = [
 gpualert = "gpualert.cli:app"
 
 [project.urls]
-Repository = "https://github.com/yourusername/gpualert"
-Issues = "https://github.com/yourusername/gpualert/issues"
+Homepage = "https://github.com/Parv-01/gpualert"
+Repository = "https://github.com/Parv-01/gpualert"
+Issues = "https://github.com/Parv-01/gpualert/issues"
+Documentation = "https://github.com/Parv-01/gpualert/blob/main/docs/index.md"
+Changelog = "https://github.com/Parv-01/gpualert/blob/main/CHANGELOG.md"
 
 [tool.setuptools.packages.find]
 where = ["."]
