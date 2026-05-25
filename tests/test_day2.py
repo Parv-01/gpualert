@@ -1,4 +1,5 @@
 """Day 2 tests — launcher and error parser."""
+
 from __future__ import annotations
 
 import os
@@ -122,9 +123,7 @@ class TestLauncher:
     def test_stdout_captured_in_log(self):
         from gpualert.launcher import run_job
 
-        result = run_job(
-            [sys.executable, "-c", "print('unique_test_string_12345')"]
-        )
+        result = run_job([sys.executable, "-c", "print('unique_test_string_12345')"])
         with open(result.stdout_log_path) as f:
             content = f.read()
         assert "unique_test_string_12345" in content
@@ -132,9 +131,7 @@ class TestLauncher:
     def test_stderr_captured_in_log(self):
         from gpualert.launcher import run_job
 
-        result = run_job(
-            [sys.executable, "-c", "import sys; sys.stderr.write('err_test_99\\n')"]
-        )
+        result = run_job([sys.executable, "-c", "import sys; sys.stderr.write('err_test_99\\n')"])
         with open(result.stderr_log_path) as f:
             content = f.read()
         assert "err_test_99" in content
@@ -150,9 +147,7 @@ class TestLauncher:
     def test_timeout_kills_process(self):
         from gpualert.launcher import run_job
 
-        result = run_job(
-            [sys.executable, "-c", "import time; time.sleep(60)"], timeout=2
-        )
+        result = run_job([sys.executable, "-c", "import time; time.sleep(60)"], timeout=2)
         assert result.status == "timeout"
         assert result.is_failed()
         for path in result.log_files():
@@ -161,9 +156,7 @@ class TestLauncher:
     def test_job_result_has_duration(self):
         from gpualert.launcher import run_job
 
-        result = run_job(
-            [sys.executable, "-c", "import time; time.sleep(0.1)"]
-        )
+        result = run_job([sys.executable, "-c", "import time; time.sleep(0.1)"])
         assert result.duration_seconds >= 0.1
         assert result.duration_human() != ""
 

@@ -9,6 +9,7 @@ run_job(cmd) always:
 It never raises. Every error path writes a [SYSTEM] message to the logs
 and returns a JobResult with is_failed() == True.
 """
+
 from __future__ import annotations
 
 import os

@@ -10,6 +10,7 @@ the CLI can fall back to a clear error message rather than hanging.
 As in launcher.py, log files are written before polling begins and
 populated throughout, so the JobResult always carries real on-disk paths.
 """
+
 from __future__ import annotations
 
 import re
@@ -108,9 +109,7 @@ def get_job_info(job_id: int) -> SlurmJobInfo:
         f"--format={fields}",
     ]
     try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=15, check=False
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=False)
         if proc.returncode != 0 or not proc.stdout.strip():
             return SlurmJobInfo(job_id=job_id, state="UNKNOWN")
         first = proc.stdout.strip().splitlines()[0]
@@ -237,7 +236,5 @@ def poll_job(
         stdout_log_path=stdout_path,
         stderr_log_path=stderr_path,
         combined_log_path=combined_path,
-        error_summary=(
-            f"Slurm state: {last_state}" if status != "success" else ""
-        ),
+        error_summary=(f"Slurm state: {last_state}" if status != "success" else ""),
     )

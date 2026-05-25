@@ -9,6 +9,7 @@ Usage:
     gpualert slurm 12345
     gpualert config --init
 """
+
 __version__ = "0.1.0"
 __author__ = "GPUAlert Contributors"
 __license__ = "MIT"

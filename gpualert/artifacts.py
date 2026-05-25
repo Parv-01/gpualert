@@ -8,6 +8,7 @@ budget for the email — packing the rest into a zip if needed.
 Log files are special: on failure they are ALWAYS attached, regardless of
 budget. The budget governs *artifacts* (user output), not logs.
 """
+
 from __future__ import annotations
 
 import fnmatch
@@ -21,23 +22,50 @@ from gpualert.types import ArtifactFile
 
 # Author signature in an internal default.
 _PARV_DEFAULT_PATTERNS: List[str] = [
-    "*.csv", "*.png", "*.jpg", "*.jpeg", "*.svg",
-    "*.txt", "*.json", "*.log", "*.out",
-    "*.npz", "*.npy", "*.h5", "*.hdf5",
-    "*.pkl", "*.pickle",
-    "*.pdf", "*.zip",
-    "results*", "output*", "metrics*",
+    "*.csv",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.svg",
+    "*.txt",
+    "*.json",
+    "*.log",
+    "*.out",
+    "*.npz",
+    "*.npy",
+    "*.h5",
+    "*.hdf5",
+    "*.pkl",
+    "*.pickle",
+    "*.pdf",
+    "*.zip",
+    "results*",
+    "output*",
+    "metrics*",
 ]
 
 DEFAULT_PATTERNS = _PARV_DEFAULT_PATTERNS
 
 # Directories we never recurse into when scanning for job artifacts.
 # Standard tool-output / cache dirs the user probably doesn't want emailed.
-_EXCLUDED_DIRS = frozenset({
-    ".git", "__pycache__", ".venv", "venv", "env",
-    "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    ".idea", ".vscode", "dist", "build", ".eggs",
-})
+_EXCLUDED_DIRS = frozenset(
+    {
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "env",
+        "node_modules",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        ".idea",
+        ".vscode",
+        "dist",
+        "build",
+        ".eggs",
+    }
+)
 
 
 def _matches_any(filename: str, patterns: List[str]) -> bool:
@@ -83,11 +111,13 @@ def find_artifacts(
                 continue
             if st.st_size > max_bytes:
                 continue
-            found.append(ArtifactFile(
-                path=str(fp.resolve()),
-                size_bytes=st.st_size,
-                extension=fp.suffix.lstrip(".").lower(),
-            ))
+            found.append(
+                ArtifactFile(
+                    path=str(fp.resolve()),
+                    size_bytes=st.st_size,
+                    extension=fp.suffix.lstrip(".").lower(),
+                )
+            )
     found.sort(key=lambda a: a.size_bytes)
     return found
 
@@ -121,9 +151,7 @@ def prepare_attachments(
                 to_attach.append(lf)
 
     budget_bytes = int(max_total_mb * 1024 * 1024)
-    used_bytes = sum(
-        (os.path.getsize(f) if os.path.isfile(f) else 0) for f in to_attach
-    )
+    used_bytes = sum((os.path.getsize(f) if os.path.isfile(f) else 0) for f in to_attach)
 
     overflow: List[str] = []
     for art in artifacts or []:

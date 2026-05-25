@@ -5,10 +5,11 @@ All log paths in JobResult are ALWAYS written to disk before this object
 is returned from any function. Callers can rely on log_files() to get
 paths to real files on disk.
 """
+
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 

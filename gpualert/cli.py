@@ -8,6 +8,7 @@ Every command that runs or monitors a job is responsible for:
   4. Printing log paths to the user so they always know where logs live,
      even when the notification itself fails.
 """
+
 from __future__ import annotations
 
 from typing import List, Optional
@@ -70,21 +71,11 @@ def _print_result_table(result) -> None:
 @app.command()
 def run(
     cmd: List[str] = typer.Argument(..., help="Command to run."),
-    attach: List[str] = typer.Option(
-        [], "--attach", "-a", help="Extra glob patterns to attach."
-    ),
-    email_to: str = typer.Option(
-        "", "--email-to", "-e", help="Override recipient (one-off)."
-    ),
-    timeout: Optional[int] = typer.Option(
-        None, "--timeout", "-t", help="Timeout in seconds."
-    ),
-    dry_run: bool = typer.Option(
-        False, "--dry-run", help="Print notification, don't send."
-    ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Stream job output to console."
-    ),
+    attach: List[str] = typer.Option([], "--attach", "-a", help="Extra glob patterns to attach."),
+    email_to: str = typer.Option("", "--email-to", "-e", help="Override recipient (one-off)."),
+    timeout: Optional[int] = typer.Option(None, "--timeout", "-t", help="Timeout in seconds."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print notification, don't send."),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Stream job output to console."),
     no_notify: bool = typer.Option(
         False, "--no-notify", help="Run without sending any notification."
     ),
@@ -130,9 +121,7 @@ def run(
         console.print(f"\n[dim]Artifacts found: {len(artifact_list)}[/dim]")
 
     notifier = get_notifier(config, dry_run=dry_run)
-    with console.status(
-        "[bold yellow]Sending notification...[/bold yellow]", spinner="dots"
-    ):
+    with console.status("[bold yellow]Sending notification...[/bold yellow]", spinner="dots"):
         note = notifier.send(result, attach_files)
 
     if note.success:
@@ -178,9 +167,7 @@ def slurm(
 
     try:
         with console.status("[bold yellow]Waiting for Slurm job...[/bold yellow]"):
-            result = poll_job(
-                job_id, interval=interval, timeout=timeout, on_update=on_update
-            )
+            result = poll_job(job_id, interval=interval, timeout=timeout, on_update=on_update)
     except SlurmNotAvailableError as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
@@ -206,9 +193,7 @@ def slurm(
 def config(
     init: bool = typer.Option(False, "--init", help="Interactive setup wizard."),
     show: bool = typer.Option(False, "--show", help="Show current configuration."),
-    check: bool = typer.Option(
-        False, "--check", help="Offline config validation (no network)."
-    ),
+    check: bool = typer.Option(False, "--check", help="Offline config validation (no network)."),
     test_email: bool = typer.Option(
         False, "--test-email", help="Send a test email (alias for 'gpualert test-email')."
     ),
@@ -223,17 +208,14 @@ def config(
         return
     if show:
         console.print(
-            Panel(cfg.safe_repr(), title="Current Config (password masked)",
-                  border_style="cyan")
+            Panel(cfg.safe_repr(), title="Current Config (password masked)", border_style="cyan")
         )
         return
     if check:
         ok, errors = validate_config(cfg)
         if ok:
             console.print("[green]Config is valid (offline check).[/green]")
-            console.print(
-                "[dim]Run 'gpualert test-email' to verify SMTP actually works.[/dim]"
-            )
+            console.print("[dim]Run 'gpualert test-email' to verify SMTP actually works.[/dim]")
         else:
             console.print("[red]Config has problems:[/red]")
             for err in errors:
@@ -255,8 +237,7 @@ def config(
         return
 
     console.print(
-        "Use --init, --show, --check, --test-email, or --reset. "
-        "Run 'gpualert config --help'."
+        "Use --init, --show, --check, --test-email, or --reset. " "Run 'gpualert config --help'."
     )
 
 
@@ -320,8 +301,7 @@ def logs(
     for entry in recent:
         table.add_row(
             str(entry["dir"]),
-            entry["created"].strftime("%Y-%m-%d %H:%M:%S")
-            if entry.get("created") else "?",
+            entry["created"].strftime("%Y-%m-%d %H:%M:%S") if entry.get("created") else "?",
             f"{entry.get('size_mb', 0):.2f} MB",
         )
     console.print(table)

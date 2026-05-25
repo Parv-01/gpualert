@@ -5,6 +5,7 @@ Config lives at ~/.gpualert/config.toml with permissions 600.
 On first run the file is created with safe defaults. Password is never
 printed by safe_repr(); the user is responsible for protecting the file.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,7 +23,7 @@ try:
 except ImportError:  # pragma: no cover - fallback for 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
-import tomli_w
+import tomli_w  # noqa: E402
 
 
 class SMTPConfig(BaseModel):
@@ -32,9 +33,7 @@ class SMTPConfig(BaseModel):
     username: str = ""
     password: str = ""  # never logged
     model_config = ConfigDict(
-        json_schema_extra={
-            "example": {"server": "smtp.gmail.com", "port": 587}
-        }
+        json_schema_extra={"example": {"server": "smtp.gmail.com", "port": 587}}
     )
 
 

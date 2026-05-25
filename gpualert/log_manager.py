@@ -8,6 +8,7 @@ if the job crashes or the process is killed.
 All write_to_log calls are best-effort: they catch every exception so a
 logging failure can never mask the underlying job result.
 """
+
 from __future__ import annotations
 
 import logging

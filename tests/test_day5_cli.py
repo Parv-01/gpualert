@@ -1,10 +1,9 @@
 """Day 5 tests — Typer CLI commands."""
+
 from __future__ import annotations
 
-import sys
 from unittest.mock import patch
 
-import pytest
 from typer.testing import CliRunner
 
 from gpualert.cli import app
@@ -14,16 +13,20 @@ runner = CliRunner()
 
 def _mock_email_ok(result, attachments):
     from gpualert.types import NotificationResult
+
     return NotificationResult(
-        success=True, notifier_type="email",
+        success=True,
+        notifier_type="email",
         message="Email sent to test@example.com",
     )
 
 
 def _mock_email_fail(result, attachments):
     from gpualert.types import NotificationResult
+
     return NotificationResult(
-        success=False, notifier_type="email",
+        success=False,
+        notifier_type="email",
         message="SMTP authentication failed",
     )
 
@@ -48,9 +51,7 @@ class TestRunCommand:
         # `--` separates gpualert options from the wrapped command's options
         with patch("gpualert.cli.get_notifier") as nf:
             nf.return_value.send = _mock_email_ok
-            res = runner.invoke(
-                app, ["run", "--", "false"]
-            )
+            res = runner.invoke(app, ["run", "--", "false"])
         assert res.exit_code == 1
         assert "FAILED" in res.output
 
@@ -90,6 +91,7 @@ class TestConfigCommand:
 
     def test_check_on_unconfigured_exits_one(self):
         from gpualert.config import GPUAlertConfig
+
         with patch("gpualert.cli.load_config", return_value=GPUAlertConfig()):
             res = runner.invoke(app, ["config", "--check"])
         assert res.exit_code == 1
@@ -97,6 +99,7 @@ class TestConfigCommand:
 
     def test_check_on_valid_config_exits_zero(self):
         from gpualert.config import EmailConfig, GPUAlertConfig, SMTPConfig
+
         cfg = GPUAlertConfig()
         cfg.smtp = SMTPConfig(username="parv@example.com", password="x")
         cfg.email = EmailConfig(
@@ -113,20 +116,24 @@ class TestConfigCommand:
 class TestTestEmailCommand:
     def test_unconfigured_exits_one(self):
         from gpualert.config import GPUAlertConfig
+
         with patch("gpualert.cli.load_config", return_value=GPUAlertConfig()):
             res = runner.invoke(app, ["test-email"])
         assert res.exit_code == 1
 
     def test_configured_sends_via_notifier(self):
         from gpualert.config import EmailConfig, GPUAlertConfig, SMTPConfig
+
         cfg = GPUAlertConfig()
         cfg.smtp = SMTPConfig(username="parv@example.com", password="x")
         cfg.email = EmailConfig(
             from_address="parv@example.com",
             to_addresses=["dst@example.com"],
         )
-        with patch("gpualert.cli.load_config", return_value=cfg), \
-             patch("gpualert.cli.get_notifier") as nf:
+        with (
+            patch("gpualert.cli.load_config", return_value=cfg),
+            patch("gpualert.cli.get_notifier") as nf,
+        ):
             nf.return_value.send = _mock_email_ok
             res = runner.invoke(app, ["test-email"])
         assert res.exit_code == 0

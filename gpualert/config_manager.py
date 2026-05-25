@@ -4,6 +4,7 @@ gpualert.config_manager — Interactive config wizard.
 Kept separate from gpualert.config so importing the config module never
 triggers input prompts (matters for tests, CI, anything non-interactive).
 """
+
 from __future__ import annotations
 
 import getpass
@@ -52,12 +53,16 @@ def init_config_interactive(
     out("")
 
     config.smtp.server = _prompt(
-        "SMTP server", config.smtp.server,
-        input_fn=input_fn, getpass_fn=getpass_fn,
+        "SMTP server",
+        config.smtp.server,
+        input_fn=input_fn,
+        getpass_fn=getpass_fn,
     )
     port_str = _prompt(
-        "SMTP port", str(config.smtp.port),
-        input_fn=input_fn, getpass_fn=getpass_fn,
+        "SMTP port",
+        str(config.smtp.port),
+        input_fn=input_fn,
+        getpass_fn=getpass_fn,
     )
     try:
         config.smtp.port = int(port_str) if port_str else 587
@@ -65,8 +70,10 @@ def init_config_interactive(
         config.smtp.port = 587
 
     config.smtp.username = _prompt(
-        "SMTP username (your email)", config.smtp.username,
-        input_fn=input_fn, getpass_fn=getpass_fn,
+        "SMTP username (your email)",
+        config.smtp.username,
+        input_fn=input_fn,
+        getpass_fn=getpass_fn,
     )
 
     # Gmail App Password hint — fires when the username looks like Gmail.
@@ -78,15 +85,19 @@ def init_config_interactive(
         out("")
 
     config.smtp.password = _prompt(
-        "SMTP password / App Password", config.smtp.password, secret=True,
-        input_fn=input_fn, getpass_fn=getpass_fn,
+        "SMTP password / App Password",
+        config.smtp.password,
+        secret=True,
+        input_fn=input_fn,
+        getpass_fn=getpass_fn,
     )
     config.email.from_address = config.smtp.username
 
     to_raw = _prompt(
         "Send notifications to (comma-separated)",
         ", ".join(config.email.to_addresses),
-        input_fn=input_fn, getpass_fn=getpass_fn,
+        input_fn=input_fn,
+        getpass_fn=getpass_fn,
     )
     config.email.to_addresses = [e.strip() for e in to_raw.split(",") if e.strip()]
 

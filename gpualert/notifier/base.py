@@ -6,6 +6,7 @@ BaseNotifier. The send() signature receives `attachments` explicitly so
 callers can enforce the log-attachment contract at the call site rather
 than relying on each backend to remember it.
 """
+
 from __future__ import annotations
 
 import os

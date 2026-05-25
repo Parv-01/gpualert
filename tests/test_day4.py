@@ -1,12 +1,11 @@
 """Day 4 tests — email notifier (mocked SMTP) and dry-run notifier."""
+
 from __future__ import annotations
 
 import tempfile
 import uuid
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -91,8 +90,8 @@ class TestEmailNotifier:
         cfg = make_config()
         result = make_result("success")
         with patch("smtplib.SMTP") as mock_smtp_cls:
-            mock_smtp_cls.return_value.__enter__.side_effect = (
-                smtplib.SMTPAuthenticationError(535, b"auth failed")
+            mock_smtp_cls.return_value.__enter__.side_effect = smtplib.SMTPAuthenticationError(
+                535, b"auth failed"
             )
             mock_smtp_cls.return_value.__exit__.return_value = False
             note = EmailNotifier(cfg).send(result, [])
@@ -128,9 +127,7 @@ class TestEmailNotifier:
             mock_server = MagicMock()
             mock_smtp_cls.return_value.__enter__.return_value = mock_server
             mock_smtp_cls.return_value.__exit__.return_value = False
-            note = EmailNotifier(cfg).send(
-                result, ["/nonexistent/path/that/will/never/exist.log"]
-            )
+            note = EmailNotifier(cfg).send(result, ["/nonexistent/path/that/will/never/exist.log"])
         assert note.success is True
         assert "Skipped" in note.message
 
@@ -183,8 +180,8 @@ class TestDryRunNotifier:
 # ── Body / subject builders ────────────────────────────────────────────────
 class TestBodyAndSubject:
     def test_body_contains_command_and_status_on_success(self):
-        from gpualert.notifier.base import BaseNotifier
         from gpualert.config import GPUAlertConfig
+        from gpualert.notifier.base import BaseNotifier
 
         class _Probe(BaseNotifier):
             def send(self, result, attachments):  # pragma: no cover - not used
@@ -196,8 +193,8 @@ class TestBodyAndSubject:
         assert "Duration" in body
 
     def test_body_includes_stderr_tail_on_failure(self):
-        from gpualert.notifier.base import BaseNotifier
         from gpualert.config import GPUAlertConfig
+        from gpualert.notifier.base import BaseNotifier
 
         class _Probe(BaseNotifier):
             def send(self, result, attachments):
@@ -208,8 +205,8 @@ class TestBodyAndSubject:
         assert "CUDA out of memory" in body
 
     def test_subject_includes_status(self):
-        from gpualert.notifier.base import BaseNotifier
         from gpualert.config import GPUAlertConfig
+        from gpualert.notifier.base import BaseNotifier
 
         class _Probe(BaseNotifier):
             def send(self, result, attachments):
@@ -220,8 +217,8 @@ class TestBodyAndSubject:
         assert "FAILED" in n._build_subject(make_result("failed"))
 
     def test_subject_truncates_long_commands(self):
-        from gpualert.notifier.base import BaseNotifier
         from gpualert.config import GPUAlertConfig
+        from gpualert.notifier.base import BaseNotifier
 
         class _Probe(BaseNotifier):
             def send(self, result, attachments):

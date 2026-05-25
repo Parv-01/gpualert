@@ -8,6 +8,7 @@ does not re-derive that policy.
 send() never raises. Every failure path returns a NotificationResult
 with success=False and a human-readable message.
 """
+
 from __future__ import annotations
 
 import os

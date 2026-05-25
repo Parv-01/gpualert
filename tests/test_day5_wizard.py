@@ -1,10 +1,11 @@
 """Day 5 tests — the config_manager wizard, including Gmail App Password hint."""
+
 from __future__ import annotations
 
 
 def test_gmail_hint_shown_for_gmail_username(tmp_path, monkeypatch):
     """Wizard must print the App Password URL when the user types a gmail address."""
-    from gpualert.config import GPUAlertConfig, get_config_path
+    from gpualert.config import GPUAlertConfig
     from gpualert.config_manager import init_config_interactive
 
     # Redirect the config file to a tmp location so we don't clobber real config
@@ -13,12 +14,14 @@ def test_gmail_hint_shown_for_gmail_username(tmp_path, monkeypatch):
         lambda: tmp_path / "config.toml",
     )
 
-    inputs = iter([
-        "",                       # SMTP server (keep default)
-        "",                       # port
-        "parv@gmail.com",         # username -> triggers Gmail hint
-        "to@example.com",         # to_addresses
-    ])
+    inputs = iter(
+        [
+            "",  # SMTP server (keep default)
+            "",  # port
+            "parv@gmail.com",  # username -> triggers Gmail hint
+            "to@example.com",  # to_addresses
+        ]
+    )
     secrets = iter(["fakepass"])
     printed: list[str] = []
 
@@ -45,12 +48,14 @@ def test_no_gmail_hint_for_non_gmail(tmp_path, monkeypatch):
         lambda: tmp_path / "config.toml",
     )
 
-    inputs = iter([
-        "smtp.work.com",
-        "465",
-        "parv@work.com",          # NOT gmail
-        "to@example.com",
-    ])
+    inputs = iter(
+        [
+            "smtp.work.com",
+            "465",
+            "parv@work.com",  # NOT gmail
+            "to@example.com",
+        ]
+    )
     secrets = iter(["pw"])
     printed: list[str] = []
 
@@ -75,12 +80,14 @@ def test_wizard_persists_user_input(tmp_path, monkeypatch):
         lambda: tmp_path / "config.toml",
     )
 
-    inputs = iter([
-        "smtp.custom.com",
-        "2525",
-        "parv@custom.com",
-        "a@example.com, b@example.com",
-    ])
+    inputs = iter(
+        [
+            "smtp.custom.com",
+            "2525",
+            "parv@custom.com",
+            "a@example.com, b@example.com",
+        ]
+    )
     secrets = iter(["sekret"])
 
     cfg = init_config_interactive(
