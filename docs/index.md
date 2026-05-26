@@ -18,6 +18,7 @@ gpualert slurm 12345
 - [Architecture](architecture.md) — how the log guarantee, polling, and attachment budget work.
 - [Runbook](runbook.md) — common failures and how to recover.
 - [Contributing](contributing.md) — dev setup and test loop.
+- [Releasing](releasing.md) — PyPI publish recipe (maintainers).
 
 ## Design promises
 
