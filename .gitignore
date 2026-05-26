@@ -38,3 +38,6 @@ Thumbs.db
 # Sandbox probe leftovers (bindfs cannot delete these)
 probe.txt
 .gitignore.tmp
+
+# local_test.py output
+local_test_runs/
