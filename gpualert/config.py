@@ -150,31 +150,3 @@ def validate_config(config: GPUAlertConfig) -> Tuple[bool, List[str]]:
         if "@" not in addr or "." not in addr.split("@")[-1]:
             errors.append(f"invalid recipient: {addr}")
     return (len(errors) == 0, errors)
-
-
-def init_config_interactive(config: GPUAlertConfig) -> GPUAlertConfig:
-    """Prompt for missing fields. Saves and returns updated config."""
-    # Import here so the module loads without prompting at import time
-    import getpass
-
-    def prompt(label: str, current: str, secret: bool = False) -> str:
-        display = "***" if (secret and current) else current
-        suffix = f" [{display}]: " if current else ": "
-        if secret:
-            val = getpass.getpass(label + suffix) or current
-        else:
-            val = input(label + suffix) or current
-        return val
-
-    config.smtp.server = prompt("SMTP server", config.smtp.server)
-    config.smtp.port = int(prompt("SMTP port", str(config.smtp.port)) or 587)
-    config.smtp.username = prompt("SMTP username", config.smtp.username)
-    config.smtp.password = prompt("SMTP password", config.smtp.password, secret=True)
-    config.email.from_address = config.smtp.username
-    to_raw = prompt(
-        "Send notifications to (comma-separated)",
-        ", ".join(config.email.to_addresses),
-    )
-    config.email.to_addresses = [e.strip() for e in to_raw.split(",") if e.strip()]
-    save_config(config)
-    return config
