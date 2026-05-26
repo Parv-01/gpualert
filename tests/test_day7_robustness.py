@@ -17,12 +17,9 @@ of external systems (subprocess, smtplib, sacct) we cannot reach in CI.
 
 from __future__ import annotations
 
-import io
 import logging
 import os
-import subprocess
 import sys
-import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -61,11 +58,13 @@ def isolated_home(tmp_path, monkeypatch):
 def good_config(isolated_home):
     """A populated config persisted under the isolated HOME."""
     cfg = GPUAlertConfig(
-        smtp=SMTPConfig(server="smtp.example.com", port=587,
-                        username="u@example.com",
-                        password="hunter2-app-specific-pw-987"),
-        email=EmailConfig(from_address="u@example.com",
-                          to_addresses=["dest@example.com"]),
+        smtp=SMTPConfig(
+            server="smtp.example.com",
+            port=587,
+            username="u@example.com",
+            password="hunter2-app-specific-pw-987",
+        ),
+        email=EmailConfig(from_address="u@example.com", to_addresses=["dest@example.com"]),
     )
     save_config(cfg)
     return cfg
@@ -87,14 +86,22 @@ class TestCLISlurm:
     def test_slurm_happy_path_with_mocks(self, isolated_home, good_config):
         runner = CliRunner()
         fake_result = JobResult(
-            command="slurm_job_77", job_id="internal-77",
-            start_time=datetime.now(), end_time=datetime.now(),
-            duration_seconds=42, status="success", exit_code=0,
-            stdout_log_path="", stderr_log_path="", combined_log_path="",
+            command="slurm_job_77",
+            job_id="internal-77",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            duration_seconds=42,
+            status="success",
+            exit_code=0,
+            stdout_log_path="",
+            stderr_log_path="",
+            combined_log_path="",
         )
-        with patch("gpualert.cli.is_slurm_available", return_value=True), \
-             patch("gpualert.cli.poll_job", return_value=fake_result), \
-             patch("gpualert.cli.get_notifier") as mock_notifier:
+        with (
+            patch("gpualert.cli.is_slurm_available", return_value=True),
+            patch("gpualert.cli.poll_job", return_value=fake_result),
+            patch("gpualert.cli.get_notifier") as mock_notifier,
+        ):
             mock_notifier.return_value.send.return_value = MagicMock(
                 success=True, message="sent to [...]"
             )
@@ -105,14 +112,20 @@ class TestCLISlurm:
     def test_slurm_failure_exits_nonzero(self, isolated_home, good_config):
         runner = CliRunner()
         failing = JobResult(
-            command="slurm_job_99", job_id="internal-99",
-            start_time=datetime.now(), end_time=datetime.now(),
-            duration_seconds=10, status="failed", exit_code=1,
+            command="slurm_job_99",
+            job_id="internal-99",
+            start_time=datetime.now(),
+            end_time=datetime.now(),
+            duration_seconds=10,
+            status="failed",
+            exit_code=1,
             error_summary="Slurm state: FAILED",
         )
-        with patch("gpualert.cli.is_slurm_available", return_value=True), \
-             patch("gpualert.cli.poll_job", return_value=failing), \
-             patch("gpualert.cli.get_notifier") as mock_notifier:
+        with (
+            patch("gpualert.cli.is_slurm_available", return_value=True),
+            patch("gpualert.cli.poll_job", return_value=failing),
+            patch("gpualert.cli.get_notifier") as mock_notifier,
+        ):
             mock_notifier.return_value.send.return_value = MagicMock(
                 success=False, message="auth failed"
             )
@@ -226,8 +239,11 @@ class TestLogManager:
 
     def test_setup_job_logger_verbose_adds_stream_handler(self, tmp_path):
         logger = setup_job_logger("verbose-id", tmp_path, verbose=True)
-        stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)
-                           and not isinstance(h, logging.FileHandler)]
+        stream_handlers = [
+            h
+            for h in logger.handlers
+            if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+        ]
         assert len(stream_handlers) >= 1
         for h in list(logger.handlers):
             logger.removeHandler(h)
@@ -264,8 +280,7 @@ class TestLogManager:
 class TestLauncherErrorPaths:
     def test_keyboard_interrupt(self, isolated_home):
         """If Popen raises KeyboardInterrupt, run_job records 'interrupted'."""
-        with patch("gpualert.launcher.subprocess.Popen",
-                   side_effect=KeyboardInterrupt()):
+        with patch("gpualert.launcher.subprocess.Popen", side_effect=KeyboardInterrupt()):
             result = run_job(["echo", "hi"])
         assert result.status == "interrupted"
         assert result.exit_code == -2
@@ -274,8 +289,9 @@ class TestLauncherErrorPaths:
 
     def test_unexpected_exception(self, isolated_home):
         """Any other exception inside the launcher is swallowed as 'failed' -99."""
-        with patch("gpualert.launcher.subprocess.Popen",
-                   side_effect=RuntimeError("simulated launcher bug")):
+        with patch(
+            "gpualert.launcher.subprocess.Popen", side_effect=RuntimeError("simulated launcher bug")
+        ):
             result = run_job(["echo", "hi"])
         assert result.status == "failed"
         assert result.exit_code == -99
@@ -294,8 +310,10 @@ class TestConfigErrorPaths:
             assert save_config(cfg) is False
 
     def test_save_config_does_not_raise_on_bad_path(self, isolated_home, monkeypatch):
-        monkeypatch.setattr("gpualert.config.get_config_path",
-                            lambda: Path("/nonexistent/dir/structure/config.toml"))
+        monkeypatch.setattr(
+            "gpualert.config.get_config_path",
+            lambda: Path("/nonexistent/dir/structure/config.toml"),
+        )
         # Must return False, must not raise.
         assert save_config(GPUAlertConfig()) is False
 

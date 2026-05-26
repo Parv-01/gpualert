@@ -1,0 +1,17 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include pyproject.toml
+
+recursive-include gpualert *.py
+recursive-include tests *.py
+
+# Repo-only assets — kept in GitHub for the README, excluded from the
+# PyPI sdist so a `pip install gpualert` doesn't pull 10 MB of demo GIF.
+prune assets
+prune local_test_runs
+prune dist
+prune build
+prune launch
+prune .github
+global-exclude *.pyc __pycache__ .DS_Store

@@ -5,6 +5,15 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- GitHub Actions CI workflow (`.github/workflows/ci.yml`): matrix on Python 3.10 /
+  3.11 / 3.12, runs ruff, black --check, pytest with coverage, and `local_test.py`
+  on every push and PR. Separate `build` job verifies the sdist + wheel build and
+  passes `twine check`.
+- Issue + PR templates under `.github/`.
+- README badges: CI status, PyPI version, supported Python versions, license.
+
 ## [0.1.0] — 2026-05-25
 
 Initial release.

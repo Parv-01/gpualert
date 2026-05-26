@@ -41,3 +41,6 @@ probe.txt
 
 # local_test.py output
 local_test_runs/
+
+# Local marketing/launch drafts (not for the repo)
+launch/
