@@ -44,3 +44,6 @@ local_test_runs/
 
 # Local marketing/launch drafts (not for the repo)
 launch/
+
+# Cowork session handoff notes (not for the repo)
+summary/
