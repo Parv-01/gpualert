@@ -35,6 +35,43 @@ nc -vz smtp.gmail.com 587
 If `nc` hangs or fails, GPUAlert will too. Either open the port or run from a host that can reach
 the SMTP server. The job itself is not affected — logs are still on disk at `~/.gpualert/logs/`.
 
+## `gaierror: Name or service not known` from an HPC compute node
+
+```
+Notification failed: Network/value error: gaierror: [Errno -2] Name or service not known
+```
+
+Typical on shared HPC clusters: the GPU compute nodes have no outbound DNS or SMTP, even
+though the login node does. The job itself ran fine and the logs are on disk under
+`~/.gpualert/logs/<run_id>/` — only the email failed.
+
+Two reliable fixes:
+
+1. **Submit with `sbatch`, monitor with `gpualert slurm` from the login node.**
+   The compute node runs your script with no network expectation; the login node polls
+   `sacct` and sends the email:
+
+   ```bash
+   sbatch run_job.sh                              # on the login node
+   gpualert slurm <job_id>                        # also on the login node
+   ```
+
+2. **Use your institution's internal SMTP relay.** Many clusters provide one (often
+   reachable from compute nodes) — ask your HPC helpdesk. Then in `~/.gpualert/config.yaml`:
+
+   ```yaml
+   smtp:
+     server: smtp.your-institution.edu
+     port: 25
+     username: ""        # often unauthenticated on internal relays
+     use_tls: false
+   ```
+
+Also check that you didn't type your email address at the "SMTP server" prompt by mistake
+(`gpualert config --show` — the `server` field should be a hostname like `smtp.gmail.com`,
+never something with an `@`). The wizard rejects this in 0.1.1+, but older configs may
+still have it stuck as the default.
+
 ## Job finished but no email arrived
 
 In order:
