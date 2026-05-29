@@ -52,12 +52,38 @@ def init_config_interactive(
     out("Press Enter to keep current value (shown in brackets).")
     out("")
 
-    config.smtp.server = _prompt(
-        "SMTP server",
-        config.smtp.server,
-        input_fn=input_fn,
-        getpass_fn=getpass_fn,
-    )
+    # SMTP server prompt — loops until the answer looks like a hostname,
+    # not an email address or an obvious typo. The previous wizard accepted
+    # any string here, which let users type their email at the "SMTP server"
+    # prompt by mistake and not notice for weeks.
+    while True:
+        candidate = _prompt(
+            "SMTP server",
+            config.smtp.server,
+            input_fn=input_fn,
+            getpass_fn=getpass_fn,
+        ).strip()
+        if not candidate:
+            out("  SMTP server cannot be empty. Example: smtp.gmail.com")
+            continue
+        if "@" in candidate:
+            out(
+                f"  '{candidate}' looks like an email address, not a server. "
+                "The SMTP server is a hostname like smtp.gmail.com. "
+                "Your email goes in the next prompt (SMTP username)."
+            )
+            continue
+        if "." not in candidate:
+            out(
+                f"  '{candidate}' does not look like a hostname "
+                "(no dot). Did you mean smtp.gmail.com?"
+            )
+            continue
+        if any(ch.isspace() for ch in candidate):
+            out("  SMTP server cannot contain spaces.")
+            continue
+        config.smtp.server = candidate
+        break
     port_str = _prompt(
         "SMTP port",
         str(config.smtp.port),
