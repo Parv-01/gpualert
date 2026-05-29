@@ -33,9 +33,11 @@ def _mock_email_fail(result, attachments):
 
 # ── gpualert version ────────────────────────────────────────────────────────
 def test_version_prints_version_string():
+    from gpualert import __version__
+
     res = runner.invoke(app, ["version"])
     assert res.exit_code == 0
-    assert "0.1.0" in res.output
+    assert __version__ in res.output
 
 
 # ── gpualert run ────────────────────────────────────────────────────────────
