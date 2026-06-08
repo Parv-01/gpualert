@@ -84,10 +84,6 @@ ERROR_PATTERNS: List[Tuple[str, str, str]] = [
         "Python RuntimeError",
         "Check stderr.log for the full traceback.",
     ),
-    # Generic Python traceback comes LAST so a specific exception type above
-    # (AssertionError, RuntimeError, ...) is matched before this catch-all.
-    # Otherwise a real AssertionError carrying a traceback header would be
-    # mislabelled as a generic traceback.
     (
         r"Traceback \(most recent call last\)",
         "Python exception (traceback)",
