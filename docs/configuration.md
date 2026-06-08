@@ -24,6 +24,7 @@ attach_logs_on_success = true
 attach_logs_on_failure = true   # forced true at runtime — cannot disable
 
 [artifacts]
+attach_artifacts = true
 patterns = ["*.csv", "*.png", "*.jpg", "*.txt", "*.json", "*.log", "*.npz"]
 max_single_file_mb = 25
 max_total_mb = 45
@@ -62,6 +63,7 @@ log_dir = "~/.gpualert/logs"
 
 | Field                | Type     | Default                 | Notes |
 |----------------------|----------|-------------------------|-------|
+| `attach_artifacts`   | bool     | `true`                  | Master on/off. When `false`, no output files are scanned or attached; logs still attach per `email.attach_logs_on_success`. Email body carries an explicit `NOTES` line when off. (Added in 0.1.2.) |
 | `patterns`           | string[] | see example above       | Glob patterns to scan for after the job ends. |
 | `max_single_file_mb` | int      | `25`                    | Skip any single file larger than this. |
 | `max_total_mb`       | int      | `45`                    | Total attachment budget. Overflow is zipped. |
