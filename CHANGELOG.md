@@ -5,6 +5,29 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-06-07
+
+### Added
+
+- `artifacts.attach_artifacts` (default `true`) — master on/off for output-file
+  attachment. When `false`, `gpualert run` does not scan the working directory
+  for matching files, no artifacts are attached, and the email body carries an
+  explicit `NOTES` line stating the toggle is off. Logs continue to attach per
+  `email.attach_logs_on_success` / `attach_logs_on_failure`. The flag is
+  additive — existing configs without it keep current behavior.
+- `JobResult.notes: list[str]` — free-form annotations the CLI can attach
+  before notification. Rendered as a `NOTES` section in the email body. Used
+  by the new toggle today; available for future features.
+- Regression-lock test suite `tests/test_prelaunch_guarantee.py` that
+  monkeypatches `subprocess.Popen` to fail and asserts the three log files
+  already exist on disk with the header line. Any future change that moves
+  log creation after `Popen` will break this test.
+
+### Changed
+
+- `notifier.base._build_body` now renders an optional `NOTES` section when
+  `JobResult.notes` is non-empty. Bodies without notes are unchanged.
+
 ## [0.1.1] — 2026-05-29
 
 ### Fixed
@@ -52,6 +75,7 @@ Initial release.
   on disk, even on crash or kill.
 - Notifier contract: `send()` never raises; CLI exit code follows the job, not the notifier.
 
-[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/Parv-01/gpualert/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/Parv-01/gpualert/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Parv-01/gpualert/releases/tag/v0.1.0
