@@ -68,6 +68,13 @@ class BaseNotifier(ABC):
         elif result.error_summary and result.is_success():
             lines += [thin, "METRICS", thin, result.error_summary, ""]
 
+        notes = getattr(result, "notes", None) or []
+        if notes:
+            lines += [thin, "NOTES", thin]
+            for n in notes:
+                lines.append(f"  - {n}")
+            lines.append("")
+
         if result.stderr_tail and result.is_failed():
             tail = result.stderr_tail.strip().splitlines()[-15:]
             lines += [thin, "LAST 15 LINES OF STDERR", thin, *tail, ""]

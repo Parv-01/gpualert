@@ -36,10 +36,16 @@ class JobResult:
     # Parsed intelligence
     error_summary: str = ""
     artifacts: list = None  # type: ignore[assignment]
+    # Free-form annotations the CLI attaches before notification (e.g.
+    # "Artifact attachment disabled by config"). Rendered as a NOTES
+    # section in the email body. (Added in 0.1.2.)
+    notes: list = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.artifacts is None:
             self.artifacts = []
+        if self.notes is None:
+            self.notes = []
 
     def is_success(self) -> bool:
         return self.status == "success"

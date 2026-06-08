@@ -48,6 +48,11 @@ class EmailConfig(BaseModel):
 
 
 class ArtifactConfig(BaseModel):
+    # Master on/off for artifact attachment. When False, no output files
+    # are scanned or attached; logs are still attached per
+    # email.attach_logs_on_success / attach_logs_on_failure. Default True
+    # preserves the 0.1.1 behavior. (Added in 0.1.2.)
+    attach_artifacts: bool = True
     patterns: List[str] = [
         "*.csv",
         "*.png",

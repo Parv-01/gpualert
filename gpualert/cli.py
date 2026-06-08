@@ -107,10 +107,27 @@ def run(
         console.print("[dim]Notification skipped (--no-notify)[/dim]")
         raise typer.Exit(0 if result.is_success() else 1)
 
-    artifact_list = find_artifacts(
-        start_time=result.start_time,
-        patterns=attach if attach else None,
-    )
+    # Honor the attach_artifacts master toggle. When False, skip scanning
+    # entirely so no output files are read or attached; logs still flow
+    # through prepare_attachments per attach_logs_on_success. An explicit
+    # NOTES line is added to the email body so the recipient never has to
+    # guess why no artifacts were sent.
+    if config.artifacts.attach_artifacts:
+        artifact_list = find_artifacts(
+            start_time=result.start_time,
+            patterns=attach if attach else None,
+        )
+    else:
+        artifact_list = []
+        result.notes.append(
+            "Artifact attachment disabled (artifacts.attach_artifacts=false). "
+            "No output files were scanned or attached. Logs are still attached."
+        )
+        console.print(
+            "[dim]Artifact attachment disabled by config "
+            "(artifacts.attach_artifacts=false)[/dim]"
+        )
+
     attach_files, _skipped = prepare_attachments(
         artifacts=artifact_list,
         log_files=result.log_files(),
