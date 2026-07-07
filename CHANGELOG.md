@@ -5,7 +5,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.2] — 2026-06-07
+## [0.1.3] — 2026-07-07
 
 ### Fixed
 
@@ -91,7 +91,7 @@ Initial release.
   on disk, even on crash or kill.
 - Notifier contract: `send()` never raises; CLI exit code follows the job, not the notifier.
 
-[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.2...HEAD
-[0.1.2]: https://github.com/Parv-01/gpualert/compare/v0.1.1...v0.1.2
+[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/Parv-01/gpualert/compare/v0.1.1...v0.1.3
 [0.1.1]: https://github.com/Parv-01/gpualert/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Parv-01/gpualert/releases/tag/v0.1.0
