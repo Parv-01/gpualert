@@ -35,6 +35,34 @@ nc -vz smtp.gmail.com 587
 If `nc` hangs or fails, GPUAlert will too. Either open the port or run from a host that can reach
 the SMTP server. The job itself is not affected — logs are still on disk at `~/.gpualert/logs/`.
 
+## `SMTP server disconnected` when two jobs finish at the same time
+
+```
+Notification failed: SMTP server disconnected before the message was sent
+(retried once). This can happen when parallel jobs notify simultaneously
+— the server dropped one connection.
+```
+
+Gmail (and some other providers) will close one of two nearly-simultaneous
+SMTP handshakes after `EHLO`. GPUAlert already retries once after a 3-second
+pause, which clears the vast majority of these. When the retry itself fails,
+both jobs collided inside that 3-second window.
+
+What to do:
+
+- **Retry the failed one manually.** The logs are still on disk under
+  `~/.gpualert/logs/<run_id>/`; run `gpualert test-email` to confirm SMTP
+  is otherwise healthy, then use `gpualert run --dry-run` on the same job
+  directory to inspect the email that would have gone out.
+- **Stagger completion time when scheduling batches.** If you launch N
+  jobs that all take similar time, add a tiny `sleep $((RANDOM % 30))` to
+  the wrapper script so completion emails don't fire in the same second.
+- **Switch to port 465 (implicit SSL)** with your provider if they support
+  it. Not yet a config flag in GPUAlert; tracked as future work.
+
+The retry is silent on success — you'll only see this message when both
+attempts fail. GPUAlert never crashes the job because of it.
+
 ## `gaierror: Name or service not known` from an HPC compute node
 
 ```
