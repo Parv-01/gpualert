@@ -35,6 +35,32 @@ nc -vz smtp.gmail.com 587
 If `nc` hangs or fails, GPUAlert will too. Either open the port or run from a host that can reach
 the SMTP server. The job itself is not affected — logs are still on disk at `~/.gpualert/logs/`.
 
+## `Could not decrypt gpualert secret` after moving to a new machine
+
+```
+Could not decrypt gpualert secret. This usually means the encrypted file
+was copied from another machine, or the machine identifier changed (VM
+re-image, container rebuild). Re-run `gpualert config --init` on THIS
+host, or set GPUALERT_EMAIL_PASSWORD in your environment.
+```
+
+0.1.4+ binds the encrypted secret file to a machine identifier
+(`/etc/machine-id` on Linux, `IOPlatformUUID` on macOS, `MachineGuid` on
+Windows). Copying `~/.gpualert/` to a different host or re-imaging a VM
+invalidates the key.
+
+Two ways forward:
+
+- **Re-run the wizard** on the new host: `gpualert config --init`. This
+  regenerates the encrypted secret file for the new machine identifier.
+- **Use the env-var path** for scripted / short-lived environments:
+  `export GPUALERT_EMAIL_PASSWORD=...`. This bypasses the file entirely
+  and works on any host without touching disk.
+
+If you're on an HPC compute node where the OS keyring isn't available,
+the Fernet-file path is the expected fallback — this error only appears
+when that file was written by a *different* machine.
+
 ## `SMTP server disconnected` when two jobs finish at the same time
 
 ```

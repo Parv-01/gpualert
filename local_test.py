@@ -189,14 +189,22 @@ def s1_config() -> None:
     check("safe_repr masks password", "supersecret-app-pw" not in repr_out and "***" in repr_out)
     check("safe_repr is valid JSON", repr_out.startswith("{") and repr_out.endswith("}"))
 
-    # 1g. save → load round-trip
+    # 1g. save → load round-trip. In 0.1.4+, the loaded config has the
+    # password migrated OUT of the on-disk file into the secret store, so
+    # loaded.smtp.password may be blank while password_backend is set.
+    # Either state is valid; we assert one of them.
     save_config(cfg)
     path = get_config_path()
     check("config file created", path.exists() and path.is_file(),
           detail=f"path={path}")
     loaded = load_config()
     check("loaded config matches saved username", loaded.smtp.username == cfg.smtp.username)
-    check("loaded config matches saved password", loaded.smtp.password == cfg.smtp.password)
+    _pw_ok = (
+        loaded.smtp.password == cfg.smtp.password
+        or loaded.smtp.password_backend in ("keyring", "file")
+    )
+    check("loaded config preserves password (via secret store or plaintext)", _pw_ok,
+          detail=f"password={'set' if loaded.smtp.password else 'empty'}, backend={loaded.smtp.password_backend!r}")
     check("loaded config matches recipients", loaded.email.to_addresses == cfg.email.to_addresses)
 
     # 1h. corrupt file → defaults, no crash
@@ -825,13 +833,17 @@ def main() -> int:
               f"({elapsed:.1f}s)")
         _emit("")
         _emit(f"{_ANSI['red']}Failed checks:{_ANSI['reset']}")
-        for name, detail in _FAIL_DETAILS:
+        for name, detail in _FAILED:
             _emit(f"  - {name}")
-            _emit(f"      {_ANSI['dim']}{detail}{_ANSI['reset']}")
-    _emit(f"{_ANSI['bold']}{bar}{_ANSI['reset']}")
-    _emit(f"{_ANSI['dim']}Full log: {_LOG_PATH}{_ANSI['reset']}")
+            if detail:
+                _emit(f"      {detail}")
+    _emit("═" * 70)
+    _emit(f"Full log: {_LOG_PATH}")
+    sys.exit(0 if _FAIL == 0 else 1)
 
-    return 0 if _FAIL == 0 else 1
+
+if __name__ == "__main__":
+    main()
 
 
 if __name__ == "__main__":

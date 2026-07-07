@@ -39,13 +39,21 @@ log_dir = "~/.gpualert/logs"
 
 ### `[smtp]`
 
-| Field      | Type   | Default            | Notes |
-|------------|--------|--------------------|-------|
-| `server`   | string | `smtp.gmail.com`   | SMTP server hostname. |
-| `port`     | int    | `587`              | 587 is STARTTLS, 465 is SMTPS. GPUAlert uses STARTTLS. |
-| `use_tls`  | bool   | `true`             | STARTTLS the connection after EHLO. |
-| `username` | string | `""`               | Usually your email address. |
-| `password` | string | `""`               | App password for Gmail. Never logged or printed. |
+| Field              | Type   | Default            | Notes |
+|--------------------|--------|--------------------|-------|
+| `server`           | string | `smtp.gmail.com`   | SMTP server hostname. |
+| `port`             | int    | `587`              | 587 is STARTTLS, 465 is SMTPS. GPUAlert uses STARTTLS. |
+| `use_tls`          | bool   | `true`             | STARTTLS the connection after EHLO. |
+| `username`         | string | `""`               | Usually your email address. |
+| `password`         | string | `""`               | **0.1.4+: no longer stored on disk.** In-memory-only fallback field. The wizard sends the password to the secret store instead. |
+| `password_backend` | string | `""`               | **0.1.4+**: where the live password is stored — `"keyring"` (OS keyring), `"file"` (`~/.gpualert/secret.enc`, Fernet, machine-bound), or `"env"` (`GPUALERT_EMAIL_PASSWORD`). Auto-set by wizard/migration. |
+
+**Password storage** (0.1.4+). On resolve, GPUAlert tries `GPUALERT_EMAIL_PASSWORD`
+first, then the OS keyring, then `~/.gpualert/secret.enc`. On HPC compute nodes
+where the keyring backend is absent, the Fernet file path is used automatically.
+To use the env-var path on a headless node, `export GPUALERT_EMAIL_PASSWORD=...`
+before `gpualert run`. Upgrading from 0.1.3 or earlier auto-migrates the
+plaintext password out of `config.toml` on first load and prints one stdout line.
 
 ### `[email]`
 
