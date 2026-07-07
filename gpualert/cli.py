@@ -137,6 +137,19 @@ def run(
     if artifact_list:
         console.print(f"\n[dim]Artifacts found: {len(artifact_list)}[/dim]")
 
+    # Extract structured-file metrics (CSV/JSON/YAML/XLSX) for the email
+    # body. This is best-effort and never blocks the notification.
+    if artifact_list:
+        try:
+            from gpualert.metrics import extract_metrics, format_metrics_line
+
+            metrics = extract_metrics([a.path for a in artifact_list])
+            if metrics:
+                result.notes.append(f"Metrics: {format_metrics_line(metrics)}")
+                console.print(f"[dim]Metrics: {format_metrics_line(metrics)}[/dim]")
+        except Exception:
+            pass  # notifier isolation: metric parse errors never touch the job
+
     notifier = get_notifier(config, dry_run=dry_run)
     with console.status("[bold yellow]Sending notification...[/bold yellow]", spinner="dots"):
         note = notifier.send(result, attach_files)
@@ -329,6 +342,85 @@ def logs(
 def version():
     """Print GPUAlert version."""
     console.print(f"gpualert {__version__}")
+
+
+# ─── gpualert uninstall / purge ──────────────────────────────────────────────
+@app.command()
+def uninstall(
+    keep_logs: bool = typer.Option(False, "--keep-logs", help="Preserve ~/.gpualert/logs/."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+):
+    """Delete all GPUAlert secrets, config, and (optionally) logs.
+
+    Because pip does not run any code on `pip uninstall`, `~/.gpualert/`
+    survives package removal. Run this BEFORE `pip uninstall gpualert`.
+    """
+    _run_purge(keep_logs=keep_logs, yes=yes)
+
+
+@app.command()
+def purge(
+    keep_logs: bool = typer.Option(False, "--keep-logs", help="Preserve ~/.gpualert/logs/."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation prompt."),
+):
+    """Alias for `gpualert uninstall`."""
+    _run_purge(keep_logs=keep_logs, yes=yes)
+
+
+def _run_purge(keep_logs: bool, yes: bool) -> None:
+    import shutil
+    from pathlib import Path
+
+    cfg_dir = Path.home() / ".gpualert"
+
+    if not yes:
+        console.print(
+            f"[yellow]About to delete all GPUAlert secrets and config under " f"{cfg_dir}.[/yellow]"
+        )
+        if keep_logs:
+            console.print("[dim]Logs will be preserved (--keep-logs).[/dim]")
+        if not typer.confirm("Proceed?"):
+            console.print("[dim]Aborted.[/dim]")
+            raise typer.Exit(1)
+
+    try:
+        cfg = load_config()
+        username = cfg.smtp.username or ""
+    except Exception:
+        username = ""
+
+    try:
+        from gpualert import secrets as gsecrets
+
+        if username:
+            gsecrets.purge_keyring(username)
+        gsecrets.purge_file_secret()
+    except ImportError:
+        pass
+
+    if not cfg_dir.exists():
+        console.print("[green]Secrets purged. No config directory to remove.[/green]")
+        console.print("[dim]Now run:  pip uninstall gpualert[/dim]")
+        return
+
+    if keep_logs:
+        logs_dir = cfg_dir / "logs"
+        for child in cfg_dir.iterdir():
+            if child == logs_dir:
+                continue
+            try:
+                if child.is_dir():
+                    shutil.rmtree(child, ignore_errors=True)
+                else:
+                    child.unlink(missing_ok=True)
+            except OSError:
+                pass
+        console.print(f"[green]Secrets and config removed.[/green] Logs preserved at {logs_dir}.")
+    else:
+        shutil.rmtree(cfg_dir, ignore_errors=True)
+        console.print(f"[green]Removed {cfg_dir} and all secrets.[/green]")
+
+    console.print("[dim]Now run:  pip uninstall gpualert[/dim]")
 
 
 if __name__ == "__main__":
