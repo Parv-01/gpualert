@@ -31,7 +31,17 @@ class SMTPConfig(BaseModel):
     port: int = 587
     use_tls: bool = True
     username: str = ""
-    password: str = ""  # never logged
+    # In-memory only. Persisted config.toml never carries a plaintext
+    # password after 0.1.4 — the load path migrates any legacy value into
+    # the secret store, then this field is left blank on disk. Keeping
+    # the field lets test code and older paths still set it directly.
+    password: str = ""
+    # Records where the live password is stored:
+    #   "keyring" — OS keyring (Windows Credential Locker / Keychain / Secret Service)
+    #   "file"    — ~/.gpualert/secret.enc (Fernet, machine-bound)
+    #   "env"     — GPUALERT_EMAIL_PASSWORD (external, not set by config)
+    #   ""        — not yet migrated (0.1.3 or earlier config)
+    password_backend: str = ""
     model_config = ConfigDict(
         json_schema_extra={"example": {"server": "smtp.gmail.com", "port": 587}}
     )
@@ -53,14 +63,45 @@ class ArtifactConfig(BaseModel):
     # email.attach_logs_on_success / attach_logs_on_failure. Default True
     # preserves the 0.1.1 behavior. (Added in 0.1.2.)
     attach_artifacts: bool = True
+    # Widened in 0.1.4 to cover the common ML output surface.
     patterns: List[str] = [
         "*.csv",
+        "*.tsv",
+        "*.xlsx",
+        "*.xls",
+        "*.parquet",
+        "*.json",
+        "*.yaml",
+        "*.yml",
+        "*.toml",
+        "*.npy",
+        "*.npz",
+        "*.pt",
+        "*.pth",
+        "*.ckpt",
+        "*.safetensors",
+        "*.h5",
+        "*.onnx",
+        "*.pkl",
+        "*.gguf",
         "*.png",
         "*.jpg",
-        "*.txt",
-        "*.json",
+        "*.jpeg",
+        "*.svg",
+        "*.pdf",
         "*.log",
-        "*.npz",
+        "*.txt",
+        "*.tfevents",
+        "events.out.tfevents.*",
+    ]
+    # Experiment-tracker directories (informational only, not attached).
+    tracked_dirs: List[str] = [
+        "runs",
+        "lightning_logs",
+        "wandb",
+        "mlruns",
+        "outputs",
+        "checkpoints",
     ]
     max_single_file_mb: int = 25
     max_total_mb: int = 45
@@ -76,9 +117,17 @@ class GPUAlertConfig(BaseModel):
     log_dir: str = "~/.gpualert/logs"
 
     def is_configured(self) -> bool:
+        # A backend (keyring/file/env) OR a legacy in-memory password OR the
+        # env var set at runtime is enough. After 0.1.4's silent migration,
+        # password lives in the secret store, not on this object.
+        has_secret = bool(
+            self.smtp.password
+            or self.smtp.password_backend
+            or os.environ.get("GPUALERT_EMAIL_PASSWORD")
+        )
         return bool(
             self.smtp.username
-            and self.smtp.password
+            and has_secret
             and self.email.from_address
             and self.email.to_addresses
         )
@@ -106,6 +155,10 @@ def load_config() -> GPUAlertConfig:
     """
     Load config. Creates file with defaults if missing.
     Returns defaults (without crashing) if file is corrupt.
+
+    In 0.1.4+, silently migrate any plaintext SMTP password out of
+    config.toml into the OS keyring (or encrypted fallback file), scrub
+    the plaintext from disk, and print a one-line stdout notice.
     """
     path = get_config_path()
     if not path.exists():
@@ -115,10 +168,41 @@ def load_config() -> GPUAlertConfig:
     try:
         with open(path, "rb") as f:
             data = tomllib.load(f)
-        return GPUAlertConfig(**data)
+        cfg = GPUAlertConfig(**data)
     except Exception as e:
         log.warning("Could not read config (%s) — falling back to defaults", e)
         return GPUAlertConfig()
+
+    _migrate_plaintext_password(cfg)
+    return cfg
+
+
+def _migrate_plaintext_password(cfg: GPUAlertConfig) -> None:
+    """One-shot silent migration of a plaintext SMTP password into the
+    secret store (0.1.4). Idempotent — no-op when nothing to migrate,
+    and also skipped when password_backend is already set (indicating
+    an intentional configuration by the user or a prior migration).
+    """
+    # Already migrated / user has explicitly chosen a backend → don't
+    # touch the on-disk password, even if the in-memory copy is present.
+    if cfg.smtp.password_backend:
+        return
+    legacy = (cfg.smtp.password or "").strip()
+    if not legacy:
+        return
+    try:
+        from gpualert import secrets as gsecrets
+
+        backend = gsecrets.store_secret(cfg.smtp.username or "", legacy)
+        cfg.smtp.password = ""
+        cfg.smtp.password_backend = backend
+        save_config(cfg)
+        print(
+            f"[gpualert] Migrated SMTP password to encrypted storage "
+            f"(backend={backend}). It has been removed from config.toml."
+        )
+    except Exception as e:  # migration must never crash config load
+        log.warning("password migration skipped: %s", e)
 
 
 def save_config(config: GPUAlertConfig) -> bool:
@@ -143,8 +227,13 @@ def validate_config(config: GPUAlertConfig) -> Tuple[bool, List[str]]:
     errors: List[str] = []
     if not config.smtp.username:
         errors.append("smtp.username is empty")
-    if not config.smtp.password:
-        errors.append("smtp.password is empty")
+    _has_password = bool(
+        config.smtp.password
+        or config.smtp.password_backend
+        or os.environ.get("GPUALERT_EMAIL_PASSWORD")
+    )
+    if not _has_password:
+        errors.append("smtp.password is empty (run: gpualert config --init)")
     if not (1 <= config.smtp.port <= 65535):
         errors.append(f"smtp.port out of range: {config.smtp.port}")
     if not config.email.from_address:
