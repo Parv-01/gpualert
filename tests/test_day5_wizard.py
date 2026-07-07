@@ -99,7 +99,11 @@ def test_wizard_persists_user_input(tmp_path, monkeypatch):
     assert cfg.smtp.server == "smtp.custom.com"
     assert cfg.smtp.port == 2525
     assert cfg.smtp.username == "parv@custom.com"
-    assert cfg.smtp.password == "sekret"
+    # 0.1.4+: password no longer stored on the config object. It has been
+    # persisted to the secret store; password_backend records where.
+    # (Either "keyring", "file", or — if secrets backends errored out —
+    # left on the object as a fallback.)
+    assert cfg.smtp.password_backend in ("keyring", "file") or cfg.smtp.password == "sekret"
     assert cfg.email.from_address == "parv@custom.com"
     assert cfg.email.to_addresses == ["a@example.com", "b@example.com"]
 

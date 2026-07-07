@@ -56,13 +56,20 @@ def isolated_home(tmp_path, monkeypatch):
 
 @pytest.fixture
 def good_config(isolated_home):
-    """A populated config persisted under the isolated HOME."""
+    """A populated config persisted under the isolated HOME.
+
+    Uses `password_backend="keyring"` (post-0.1.4 style) so `load_config`'s
+    migration path is a no-op — otherwise `--show` would emit the
+    migration notice into stdout during tests. The in-memory password
+    field is still set so tests that assert masking of `***` work.
+    """
     cfg = GPUAlertConfig(
         smtp=SMTPConfig(
             server="smtp.example.com",
             port=587,
             username="u@example.com",
             password="hunter2-app-specific-pw-987",
+            password_backend="keyring",
         ),
         email=EmailConfig(from_address="u@example.com", to_addresses=["dest@example.com"]),
     )
@@ -383,5 +390,4 @@ class TestRobustness:
         result = run_job([sys.executable, "-c", code], timeout=2)
         elapsed = time.time() - t0
         assert result.status == "timeout", f"got status={result.status}"
-        # The whole call should finish well under the sleep — proves the kill worked.
         assert elapsed < 15, f"timeout path took {elapsed:.1f}s, kill ineffective"
