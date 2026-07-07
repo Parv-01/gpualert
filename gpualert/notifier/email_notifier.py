@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import smtplib
 import ssl
+import time
 from email.message import EmailMessage
 from typing import List
 
@@ -78,15 +79,36 @@ class EmailNotifier(BaseNotifier):
                 except OSError as e:
                     skipped.append(f"{filepath} ({e})")
 
-            # ── Send via SMTP ───────────────────────────────────────────
+            # ── Send via SMTP (retry once on dropped connection) ────────
             context = ssl.create_default_context()
-            with smtplib.SMTP(cfg.smtp.server, cfg.smtp.port, timeout=30) as server:
-                if cfg.smtp.use_tls:
-                    server.ehlo()
-                    server.starttls(context=context)
-                    server.ehlo()
-                server.login(cfg.smtp.username, cfg.smtp.password)
-                server.send_message(msg)
+            last_exc: Exception | None = None
+            for attempt in range(2):
+                try:
+                    with smtplib.SMTP(cfg.smtp.server, cfg.smtp.port, timeout=30) as server:
+                        if cfg.smtp.use_tls:
+                            server.ehlo()
+                            server.starttls(context=context)
+                            server.ehlo()
+                        server.login(cfg.smtp.username, cfg.smtp.password)
+                        server.send_message(msg)
+                    last_exc = None
+                    break  # success
+                except smtplib.SMTPServerDisconnected as e:
+                    last_exc = e
+                    if attempt == 0:
+                        time.sleep(3)  # brief pause before retry
+
+            if last_exc is not None:
+                return NotificationResult(
+                    success=False,
+                    notifier_type=self.notifier_type,
+                    message=(
+                        "SMTP server disconnected before the message was sent "
+                        "(retried once). This can happen when parallel jobs notify "
+                        "simultaneously — the server dropped one connection. "
+                        f"Detail: {last_exc}"
+                    ),
+                )
 
             summary = f"Email sent to {cfg.email.to_addresses}. Attached: {attached}"
             if skipped:
@@ -110,7 +132,7 @@ class EmailNotifier(BaseNotifier):
             return NotificationResult(
                 success=False,
                 notifier_type=self.notifier_type,
-                message=f"SMTP error: {e}",
+                message=f"SMTP error: {type(e).__name__}: {e}",
             )
         except ConnectionRefusedError:
             return NotificationResult(
