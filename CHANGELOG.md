@@ -7,6 +7,22 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.2] — 2026-06-07
 
+### Fixed
+
+- `EmailNotifier.send()` now retries once after a 3-second sleep when the
+  first SMTP connection dies with `SMTPServerDisconnected`. This is the
+  common failure mode when two `gpualert run` processes complete
+  simultaneously and both open a Gmail SMTP session at the same instant.
+  When both attempts fail, the `NotificationResult.message` explicitly
+  says the retry was tried and suggests the parallel-job cause.
+- Generic `SMTPException` errors now include the exception subclass name
+  in `NotificationResult.message` (e.g. `SMTP error: SMTPRecipientsRefused: ...`)
+  so users can distinguish auth vs. recipient vs. HELO problems without
+  digging into logs.
+- New test suite `tests/test_smtp_retry.py` locks the retry contract:
+  disconnect-then-success, both-fail, auth-error-not-retried, generic
+  exception type surfaces, and the `send() never raises` invariant.
+
 ### Added
 
 - `artifacts.attach_artifacts` (default `true`) — master on/off for output-file
