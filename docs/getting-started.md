@@ -28,6 +28,12 @@ You'll be prompted for SMTP server, port, username (your email), password, and r
 If your username looks like Gmail, the wizard prints the App Password URL — Gmail requires an
 App Password rather than your account password and that requires 2FA on the account.
 
+In 0.1.4+, the password never lands on disk in plaintext. The wizard sends it to your OS
+keyring (Windows Credential Locker, macOS Keychain, Linux Secret Service). If your host has
+no keyring (typical on HPC compute nodes), it falls back to a machine-bound encrypted file
+at `~/.gpualert/secret.enc`. On headless CI, `export GPUALERT_EMAIL_PASSWORD=...` before
+running `gpualert` skips both — the env var wins.
+
 Verify the config without sending anything:
 
 ```bash
@@ -70,13 +76,26 @@ If you already submitted with `sbatch`, hand the job ID to GPUAlert:
 gpualert slurm 12345
 ```
 
-It polls `sacct` every 10 seconds (override with `--interval`) until the job reaches a terminal
-state, then emails you. See [CLI Reference](cli-reference.md#gpualert-slurm) for the full flag list.
+It polls `sacct` every 10 seconds (override with `--interval`) until the job reaches a terminal state, then emails.
 
-## Where things live
+## Uninstall
 
-- Config: `~/.gpualert/config.toml` (mode 600)
-- Logs:   `~/.gpualert/logs/<YYYYMMDD_HHMMSS>_<short_id>/` (mode 700 on parent)
+`pip uninstall gpualert` removes only the package files. It does not touch
+your OS keyring entry, your encrypted secret file, or `~/.gpualert/`.
 
-Each job gets its own log directory with `stdout.log`, `stderr.log`, and `combined.log`. List
-recent ones with `gpualert logs`.
+Run this **first**:
+
+```bash
+gpualert uninstall            # asks for confirmation
+gpualert uninstall --yes      # scripted / no prompt
+gpualert uninstall --keep-logs   # preserve ~/.gpualert/logs/
+```
+
+Then remove the package:
+
+```bash
+pip uninstall gpualert
+```
+
+Reversing the order leaves secrets orphaned on disk. `gpualert uninstall`
+scrubs them cleanly. `purge` is an alias for the same command.

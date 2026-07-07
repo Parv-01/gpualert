@@ -117,3 +117,30 @@ where `load_config` raises — startup is never blocked by config problems.
 `validate_config` is offline. It checks that required fields are populated, that the port is in
 range, and that recipient addresses look syntactically valid. It does not connect anywhere; for
 that, use `gpualert test-email`.
+
+## Secret storage (0.1.4+)
+
+SMTP passwords are never persisted in `config.toml`. `gpualert.secrets.load_secret`
+resolves the password at the SMTP boundary from a three-tier chain:
+
+1. `GPUALERT_EMAIL_PASSWORD` environment variable (headless / CI / explicit override).
+2. OS keyring — Windows Credential Locker, macOS Keychain, Linux Secret Service via `keyring`.
+3. `~/.gpualert/secret.enc` — Fernet ciphertext whose key is derived per-machine via
+   PBKDF2-HMAC-SHA256 (600,000 iterations, OWASP 2023/2025) from `/etc/machine-id`,
+   `IOPlatformUUID`, or `MachineGuid`. When no stable identifier exists (containers), a
+   per-install random key file is used instead. Copying `secret.enc` to another host
+   fails to decrypt with a helpful "re-run `gpualert config --init`" message.
+
+`config.load_config` runs a one-shot silent migration on upgrade: any plaintext password
+in `config.toml` is moved into the secret store, `password_backend` is set to `"keyring"`
+or `"file"`, and the password field is blanked on disk. Existing 0.1.3 configs upgrade
+in place with one stdout notice and zero user action.
+
+## Uninstall + purge
+
+`pip uninstall` runs no post-uninstall code — documented pip limitation, not a bug we
+can fix. `gpualert uninstall` (alias `purge`) exists to scrub the pieces pip cannot:
+the OS keyring entry (via `keyring.delete_password`), `~/.gpualert/secret.enc`
+(best-effort overwrite then `unlink`), `key.bin`, `salt.bin`, and the config directory.
+`--keep-logs` preserves `~/.gpualert/logs/`. The wizard prints a reminder at the end
+of `config --init` so users learn the correct removal order.

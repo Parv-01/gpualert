@@ -120,6 +120,62 @@ if not ok:
 back to defaults on parse error. `validate_config()` is offline and synchronous; it only checks
 field presence and shape, not SMTP reachability.
 
+In 0.1.4+, `load_config` also runs a one-shot silent migration: any plaintext `smtp.password`
+still on disk is moved into the secret store and the file is rewritten without it. Idempotent
+on subsequent loads.
+
+## `gpualert.secrets` (0.1.4+)
+
+Three-tier secret resolver used by the notifier at the SMTP boundary.
+
+```python
+from gpualert.secrets import store_secret, load_secret, purge_file_secret, purge_keyring, SecretStr
+
+backend = store_secret("you@example.com", "hunter2!")   # → "keyring" or "file"
+resolved = load_secret("you@example.com")               # → SecretStr | None
+password = resolved.get_secret_value() if resolved else None
+```
+
+`load_secret` order: `GPUALERT_EMAIL_PASSWORD` env var → OS keyring → `~/.gpualert/secret.enc`.
+Returns `None` when nothing is configured. `SecretStr.repr/str` never surface the plaintext;
+only `get_secret_value()` reveals it — call that at the SMTP boundary, not before.
+
+`purge_file_secret()` best-effort-overwrites and deletes the encrypted files.
+`purge_keyring(username)` removes the OS keyring entry. Both are used by `gpualert uninstall`.
+
+## `gpualert.crypto` (0.1.4+)
+
+Fernet helpers under `gpualert.secrets`. Rarely called directly.
+
+```python
+from gpualert.crypto import encrypt_secret, decrypt_secret
+
+token = encrypt_secret("plaintext")
+plain = decrypt_secret(token)   # raises InvalidToken with helpful message on machine mismatch
+```
+
+The Fernet key is derived per-machine (PBKDF2-HMAC-SHA256, 600,000 iterations, OWASP 2023/2025)
+from `/etc/machine-id` / macOS `IOPlatformUUID` / Windows `MachineGuid`, with a random
+per-install fallback key when no stable identifier exists.
+
+## `gpualert.metrics` (0.1.4+)
+
+Structured-file metric extractors. Never raises.
+
+```python
+from gpualert.metrics import extract_metrics, format_metrics_line
+
+# CSV/TSV/JSON take stdlib; XLSX/YAML/Parquet need the `gpualert[metrics]` extra.
+metrics = extract_metrics(["history.csv", "results.json"])
+line = format_metrics_line(metrics)   # "accuracy=0.9312, loss=0.4102, ..."
+```
+
+CSV/TSV read the final row (final-epoch convention). JSON walks the tree, surfacing numeric
+leaves whose key matches the metric vocabulary (`loss/acc/f1/auc/map/bleu/rouge/perplexity/psnr/
+ssim/iou/dice/mae/mse/rmse/r2/top1/top5/em`, with `val_/test_/train_/eval_` prefixes). YAML
+uses `safe_load` only. Malformed input, missing files, and missing optional dependencies all
+yield `{}`.
+
 ## Data structures
 
 ### `JobResult`

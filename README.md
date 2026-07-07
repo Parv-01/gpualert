@@ -75,6 +75,18 @@ List recent log directories:
 gpualert logs --last 20
 ```
 
+Uninstall — always run this **before** `pip uninstall gpualert`, otherwise
+your OS keyring entry and `~/.gpualert/secret.enc` will be orphaned:
+
+```bash
+gpualert uninstall            # prompts; use --yes for scripted teardown
+pip uninstall gpualert
+```
+
+Headless / CI nodes without an OS keyring can bypass the on-disk secret file
+by setting `GPUALERT_EMAIL_PASSWORD` in the environment — the resolver picks
+it up first, before keyring and the encrypted file.
+
 ## Configuration
 
 Stored at `~/.gpualert/config.toml` (mode 600), created on first run.

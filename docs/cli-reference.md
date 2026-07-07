@@ -108,3 +108,31 @@ Print the installed version.
 ```bash
 gpualert version
 ```
+
+## `gpualert uninstall` / `gpualert purge` (0.1.4+)
+
+Delete the OS-keyring entry, the encrypted secret file, and `~/.gpualert/`.
+Because `pip uninstall` runs no arbitrary code, `~/.gpualert/` (config,
+secrets, logs) survives package removal — this command scrubs it.
+
+```bash
+gpualert uninstall            # prompts for confirmation
+gpualert uninstall --yes      # scripted teardown
+gpualert uninstall --keep-logs   # preserve ~/.gpualert/logs/
+gpualert purge --yes          # alias
+```
+
+| Flag           | Default | Description |
+|----------------|---------|-------------|
+| `--keep-logs`  | off     | Preserve `~/.gpualert/logs/`; still deletes secrets + config. |
+| `--yes`, `-y`  | off     | Skip the confirmation prompt. |
+
+Order for a full removal:
+
+```bash
+gpualert uninstall --yes
+pip uninstall gpualert
+```
+
+Reverse order leaves the keyring entry and `secret.enc` on disk with no CLI
+to reach them.
