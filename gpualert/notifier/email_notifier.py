@@ -79,6 +79,20 @@ class EmailNotifier(BaseNotifier):
                 except OSError as e:
                     skipped.append(f"{filepath} ({e})")
 
+            # ── Resolve the SMTP password at the boundary (0.1.4+) ──────
+            # Priority: legacy in-memory value (tests / pre-migration) →
+            # secrets.load_secret (env → keyring → encrypted file).
+            password = cfg.smtp.password
+            if not password:
+                try:
+                    from gpualert import secrets as gsecrets
+
+                    resolved = gsecrets.load_secret(cfg.smtp.username or "")
+                    if resolved is not None:
+                        password = resolved.get_secret_value()
+                except Exception:
+                    password = ""
+
             # ── Send via SMTP (retry once on dropped connection) ────────
             context = ssl.create_default_context()
             last_exc: Exception | None = None
@@ -89,7 +103,7 @@ class EmailNotifier(BaseNotifier):
                             server.ehlo()
                             server.starttls(context=context)
                             server.ehlo()
-                        server.login(cfg.smtp.username, cfg.smtp.password)
+                        server.login(cfg.smtp.username, password)
                         server.send_message(msg)
                     last_exc = None
                     break  # success

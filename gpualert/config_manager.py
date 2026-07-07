@@ -48,14 +48,11 @@ def init_config_interactive(
     out = print_fn or print
 
     out("")
-    out("=== GPUAlert Configuration Wizard ===")
+    out("=== GPUAlert Configuration ===")
     out("Press Enter to keep current value (shown in brackets).")
     out("")
 
-    # SMTP server prompt — loops until the answer looks like a hostname,
-    # not an email address or an obvious typo. The previous wizard accepted
-    # any string here, which let users type their email at the "SMTP server"
-    # prompt by mistake and not notice for weeks.
+    # SMTP server prompt — loops until the answer looks like a hostname.
     while True:
         candidate = _prompt(
             "SMTP server",
@@ -84,6 +81,7 @@ def init_config_interactive(
             continue
         config.smtp.server = candidate
         break
+
     port_str = _prompt(
         "SMTP port",
         str(config.smtp.port),
@@ -102,7 +100,6 @@ def init_config_interactive(
         getpass_fn=getpass_fn,
     )
 
-    # Gmail App Password hint — fires when the username looks like Gmail.
     if config.smtp.username.lower().endswith("@gmail.com"):
         out("")
         out("Gmail detected. Use an App Password, not your regular password.")
@@ -110,9 +107,9 @@ def init_config_interactive(
         out("(Requires 2FA enabled on the account.)")
         out("")
 
-    config.smtp.password = _prompt(
+    entered_password = _prompt(
         "SMTP password / App Password",
-        config.smtp.password,
+        "",  # never echo the current password — force explicit re-entry or blank
         secret=True,
         input_fn=input_fn,
         getpass_fn=getpass_fn,
@@ -127,5 +124,22 @@ def init_config_interactive(
     )
     config.email.to_addresses = [e.strip() for e in to_raw.split(",") if e.strip()]
 
+    # 0.1.4+: password goes to the secret store, not to config.toml.
+    if entered_password:
+        try:
+            from gpualert import secrets as gsecrets
+
+            backend = gsecrets.store_secret(config.smtp.username, entered_password)
+            config.smtp.password = ""
+            config.smtp.password_backend = backend
+            out(f"Password saved to secret store (backend={backend}).")
+        except Exception as e:
+            out(f"Could not save password to secret store: {e}")
+            out("Falling back to in-memory only. Set GPUALERT_EMAIL_PASSWORD.")
+            config.smtp.password = entered_password
+
     save_config(config)
+    out("")
+    out("Setup complete. When you're ready to uninstall, run:")
+    out("  gpualert uninstall     # scrubs secrets before pip uninstall")
     return config
