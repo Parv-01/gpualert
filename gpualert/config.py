@@ -30,6 +30,11 @@ class SMTPConfig(BaseModel):
     server: str = "smtp.gmail.com"
     port: int = 587
     use_tls: bool = True
+    # Implicit SSL (SMTPS, typically port 465). When True the connection is
+    # wrapped in TLS from the first byte via smtplib.SMTP_SSL and use_tls
+    # (STARTTLS) is ignored. Useful on HPC clusters whose firewalls interfere
+    # with STARTTLS on 587. (Added in 0.1.5.)
+    use_ssl: bool = False
     username: str = ""
     # In-memory only. Persisted config.toml never carries a plaintext
     # password after 0.1.4 — the load path migrates any legacy value into
@@ -236,6 +241,11 @@ def validate_config(config: GPUAlertConfig) -> Tuple[bool, List[str]]:
         errors.append("smtp.password is empty (run: gpualert config --init)")
     if not (1 <= config.smtp.port <= 65535):
         errors.append(f"smtp.port out of range: {config.smtp.port}")
+    if config.smtp.port == 465 and not config.smtp.use_ssl:
+        errors.append(
+            "smtp.port is 465 (implicit SSL) but use_ssl is false — "
+            "set use_ssl = true, or use port 587 with use_tls"
+        )
     if not config.email.from_address:
         errors.append("email.from_address is empty")
     if not config.email.to_addresses:

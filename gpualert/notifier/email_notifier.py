@@ -12,6 +12,7 @@ with success=False and a human-readable message.
 from __future__ import annotations
 
 import os
+import random
 import smtplib
 import ssl
 import time
@@ -25,11 +26,51 @@ from gpualert.types import JobResult, NotificationResult
 # Author signature lives inside an internal logger constant.
 PARV_INTERNAL_LOGGER_NAME = "gpualert.notifier.parv"
 
+# Transient-failure retry policy. Shared clusters exit through one NAT IP,
+# so providers (Gmail especially) drop connections when several jobs notify
+# at once. Exponential backoff with jitter keeps parallel jobs from retrying
+# in lockstep and colliding again.
+_SMTP_ATTEMPTS = 4
+_RETRY_BASE_DELAY = 3.0  # seconds; grows 3 → 6 → 12 (+ up to 2s jitter)
+
+# Errors worth retrying: the server or network dropped us mid-session, or
+# the connection timed out. DNS failures, refused connections, and auth
+# errors are persistent — retrying those just wastes 20 seconds.
+_TRANSIENT_SMTP_ERRORS = (
+    smtplib.SMTPServerDisconnected,
+    smtplib.SMTPConnectError,
+    ConnectionResetError,
+    TimeoutError,
+)
+
 
 class EmailNotifier(BaseNotifier):
     def __init__(self, config: GPUAlertConfig):
         super().__init__(config)
         self.notifier_type = "email"
+
+    def _deliver(self, msg: EmailMessage, password: str, context: ssl.SSLContext) -> None:
+        """Open one SMTP session and send the message.
+
+        Raises on any failure — the caller owns retry and error mapping.
+        use_ssl selects implicit TLS (SMTP_SSL, port 465 style); otherwise
+        STARTTLS is issued when use_tls is set (port 587 style).
+        """
+        cfg = self.config
+        if cfg.smtp.use_ssl:
+            with smtplib.SMTP_SSL(
+                cfg.smtp.server, cfg.smtp.port, timeout=30, context=context
+            ) as server:
+                server.login(cfg.smtp.username, password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(cfg.smtp.server, cfg.smtp.port, timeout=30) as server:
+                if cfg.smtp.use_tls:
+                    server.ehlo()
+                    server.starttls(context=context)
+                    server.ehlo()
+                server.login(cfg.smtp.username, password)
+                server.send_message(msg)
 
     def send(
         self,
@@ -93,34 +134,33 @@ class EmailNotifier(BaseNotifier):
                 except Exception:
                     password = ""
 
-            # ── Send via SMTP (retry once on dropped connection) ────────
+            # ── Send via SMTP (retry transient drops with backoff) ──────
             context = ssl.create_default_context()
             last_exc: Exception | None = None
-            for attempt in range(2):
+            for attempt in range(_SMTP_ATTEMPTS):
                 try:
-                    with smtplib.SMTP(cfg.smtp.server, cfg.smtp.port, timeout=30) as server:
-                        if cfg.smtp.use_tls:
-                            server.ehlo()
-                            server.starttls(context=context)
-                            server.ehlo()
-                        server.login(cfg.smtp.username, password)
-                        server.send_message(msg)
+                    self._deliver(msg, password, context)
                     last_exc = None
                     break  # success
-                except smtplib.SMTPServerDisconnected as e:
+                except _TRANSIENT_SMTP_ERRORS as e:
                     last_exc = e
-                    if attempt == 0:
-                        time.sleep(3)  # brief pause before retry
+                    if attempt < _SMTP_ATTEMPTS - 1:
+                        # 3, 6, 12s + jitter so parallel jobs desynchronize.
+                        delay = _RETRY_BASE_DELAY * (2**attempt) + random.uniform(0, 2)
+                        time.sleep(delay)
 
             if last_exc is not None:
                 return NotificationResult(
                     success=False,
                     notifier_type=self.notifier_type,
                     message=(
-                        "SMTP server disconnected before the message was sent "
-                        "(retried once). This can happen when parallel jobs notify "
-                        "simultaneously — the server dropped one connection. "
-                        f"Detail: {last_exc}"
+                        f"SMTP connection dropped {_SMTP_ATTEMPTS} times "
+                        "(retried with backoff). On shared clusters this usually "
+                        "means the provider is rate-limiting the cluster's shared "
+                        "IP, or a firewall interferes with port "
+                        f"{cfg.smtp.port}. Try port 465 with use_ssl = true in "
+                        "config.toml. Parallel jobs notifying simultaneously can "
+                        f"also trigger this. Detail: {type(last_exc).__name__}: {last_exc}"
                     ),
                 )
 

@@ -1,17 +1,19 @@
-"""Tests for the SMTPServerDisconnected retry path (added 0.1.2).
+"""Tests for the transient-error SMTP retry path (reworked 0.1.5).
 
 Behavior under test:
 - First attempt raises SMTPServerDisconnected, second attempt succeeds
-  → send() returns success and calls SMTP() exactly twice.
-- Both attempts raise SMTPServerDisconnected → send() returns a NON-raising
-  NotificationResult whose message mentions "parallel jobs" and the retry.
-- SMTPAuthenticationError is NOT retried — auth failures are terminal, no
-  point burning a 3-second sleep on them.
-- Generic SMTPException surfaces the exception class name in the message
-  (so users can distinguish e.g. SMTPRecipientsRefused from SMTPHeloError).
+  → send() returns success after exactly two SMTP() calls.
+- All attempts fail → send() returns a NON-raising NotificationResult after
+  _SMTP_ATTEMPTS tries, with a message that explains the shared-cluster /
+  parallel-job cause and suggests port 465.
+- ConnectionResetError and TimeoutError are retried too (they are OSError
+  subclasses, not SMTPExceptions — the old loop missed them).
+- SMTPAuthenticationError is NOT retried — auth failures are terminal.
+- Generic SMTPException surfaces the exception class name in the message.
+- use_ssl = True routes through smtplib.SMTP_SSL, never plain SMTP.
 
-All tests mock `smtplib.SMTP` and never touch the network. time.sleep is
-also patched so the retry doesn't actually sleep in CI.
+All tests mock smtplib and never touch the network. time.sleep is patched
+so backoff doesn't actually sleep in CI.
 """
 
 from __future__ import annotations
@@ -87,15 +89,17 @@ class TestSmtpRetry:
             note = EmailNotifier(_make_config()).send(_make_result(), [])
 
         assert note.success is True, f"expected success, got: {note.message}"
-        assert mock_smtp.call_count == 2, "SMTP() must be called twice (retry)"
-        # The 3s pause between attempts must fire exactly once.
-        mock_sleep.assert_called_once_with(3)
+        assert mock_smtp.call_count == 2, "SMTP() must be called twice (one retry)"
+        # One backoff pause: base 3s plus up to 2s jitter.
+        mock_sleep.assert_called_once()
+        delay = mock_sleep.call_args[0][0]
+        assert 3.0 <= delay <= 5.0, f"first backoff should be 3s + jitter, got {delay}"
         good_server.login.assert_called_once()
         good_server.send_message.assert_called_once()
 
-    def test_both_attempts_disconnect_returns_parallel_job_message(self):
-        """Both attempts raise → clear parallel-job-aware message, no exception."""
-        from gpualert.notifier.email_notifier import EmailNotifier
+    def test_all_attempts_fail_returns_cluster_aware_message(self):
+        """Every attempt raises → gives up after _SMTP_ATTEMPTS, clear message."""
+        from gpualert.notifier.email_notifier import _SMTP_ATTEMPTS, EmailNotifier
 
         def _always_disconnect(*args, **kwargs):
             ctx = MagicMock()
@@ -104,15 +108,89 @@ class TestSmtpRetry:
 
         with (
             patch("smtplib.SMTP", side_effect=_always_disconnect) as mock_smtp,
-            patch("gpualert.notifier.email_notifier.time.sleep"),
+            patch("gpualert.notifier.email_notifier.time.sleep") as mock_sleep,
         ):
             note = EmailNotifier(_make_config()).send(_make_result(), [])
 
         assert note.success is False
-        assert mock_smtp.call_count == 2, "must retry exactly once before giving up"
+        assert mock_smtp.call_count == _SMTP_ATTEMPTS
+        assert mock_sleep.call_count == _SMTP_ATTEMPTS - 1, "no sleep after the final attempt"
+        # Backoff must grow between attempts.
+        delays = [c[0][0] for c in mock_sleep.call_args_list]
+        assert delays == sorted(delays), f"backoff should be non-decreasing: {delays}"
         msg = note.message.lower()
-        assert "disconnect" in msg
+        assert "dropped" in msg
         assert "parallel" in msg, f"message should hint at parallel-job cause; got: {note.message}"
+        assert "465" in note.message, "message should suggest the SSL fallback"
+
+    def test_connection_reset_is_retried(self):
+        """ConnectionResetError (OSError, not SMTPException) must be retried."""
+        from gpualert.notifier.email_notifier import EmailNotifier
+
+        good_server = MagicMock()
+        good_ctx = MagicMock()
+        good_ctx.__enter__.return_value = good_server
+        good_ctx.__exit__.return_value = False
+
+        bad_ctx = MagicMock()
+        bad_ctx.__enter__.side_effect = ConnectionResetError("Connection reset by peer")
+
+        with (
+            patch("smtplib.SMTP", side_effect=[bad_ctx, good_ctx]) as mock_smtp,
+            patch("gpualert.notifier.email_notifier.time.sleep"),
+        ):
+            note = EmailNotifier(_make_config()).send(_make_result(), [])
+
+        assert note.success is True, f"reset should be retried; got: {note.message}"
+        assert mock_smtp.call_count == 2
+
+    def test_timeout_is_retried(self):
+        """TimeoutError must be retried, not dumped to the OSError handler."""
+        from gpualert.notifier.email_notifier import EmailNotifier
+
+        good_server = MagicMock()
+        good_ctx = MagicMock()
+        good_ctx.__enter__.return_value = good_server
+        good_ctx.__exit__.return_value = False
+
+        bad_ctx = MagicMock()
+        bad_ctx.__enter__.side_effect = TimeoutError("timed out")
+
+        with (
+            patch("smtplib.SMTP", side_effect=[bad_ctx, good_ctx]) as mock_smtp,
+            patch("gpualert.notifier.email_notifier.time.sleep"),
+        ):
+            note = EmailNotifier(_make_config()).send(_make_result(), [])
+
+        assert note.success is True, f"timeout should be retried; got: {note.message}"
+        assert mock_smtp.call_count == 2
+
+    def test_use_ssl_routes_through_smtp_ssl(self):
+        """use_ssl = True → SMTP_SSL is used; plain SMTP never touched."""
+        from gpualert.notifier.email_notifier import EmailNotifier
+
+        cfg = _make_config()
+        cfg.smtp.port = 465
+        cfg.smtp.use_ssl = True
+
+        server = MagicMock()
+        ctx = MagicMock()
+        ctx.__enter__.return_value = server
+        ctx.__exit__.return_value = False
+
+        with (
+            patch("smtplib.SMTP_SSL", return_value=ctx) as mock_ssl,
+            patch("smtplib.SMTP") as mock_plain,
+        ):
+            note = EmailNotifier(cfg).send(_make_result(), [])
+
+        assert note.success is True, f"expected success, got: {note.message}"
+        mock_ssl.assert_called_once()
+        mock_plain.assert_not_called()
+        server.login.assert_called_once()
+        server.send_message.assert_called_once()
+        # Implicit SSL never issues STARTTLS.
+        server.starttls.assert_not_called()
 
     def test_auth_error_is_not_retried(self):
         """SMTPAuthenticationError is terminal — one attempt only."""

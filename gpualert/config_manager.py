@@ -93,6 +93,14 @@ def init_config_interactive(
     except ValueError:
         config.smtp.port = 587
 
+    # Port 465 means implicit SSL; STARTTLS on it just hangs. Pick the
+    # right mode automatically so users don't have to know the difference.
+    if config.smtp.port == 465:
+        config.smtp.use_ssl = True
+        out("  Port 465 detected — using implicit SSL (SMTPS).")
+    else:
+        config.smtp.use_ssl = False
+
     config.smtp.username = _prompt(
         "SMTP username (your email)",
         config.smtp.username,

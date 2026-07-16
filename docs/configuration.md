@@ -42,8 +42,9 @@ log_dir = "~/.gpualert/logs"
 | Field              | Type   | Default            | Notes |
 |--------------------|--------|--------------------|-------|
 | `server`           | string | `smtp.gmail.com`   | SMTP server hostname. |
-| `port`             | int    | `587`              | 587 is STARTTLS, 465 is SMTPS. GPUAlert uses STARTTLS. |
-| `use_tls`          | bool   | `true`             | STARTTLS the connection after EHLO. |
+| `port`             | int    | `587`              | 587 is STARTTLS, 465 is SMTPS (set `use_ssl = true`). |
+| `use_tls`          | bool   | `true`             | STARTTLS the connection after EHLO. Ignored when `use_ssl` is set. |
+| `use_ssl`          | bool   | `false`            | **0.1.5+**: implicit SSL (SMTPS) for port 465. TLS from the first byte — no STARTTLS. Try this when cluster firewalls break port 587. The wizard sets it automatically for port 465. |
 | `username`         | string | `""`               | Usually your email address. |
 | `password`         | string | `""`               | **0.1.4+: no longer stored on disk.** In-memory-only fallback field. The wizard sends the password to the secret store instead. |
 | `password_backend` | string | `""`               | **0.1.4+**: where the live password is stored — `"keyring"` (OS keyring), `"file"` (`~/.gpualert/secret.enc`, Fernet, machine-bound), or `"env"` (`GPUALERT_EMAIL_PASSWORD`). Auto-set by wizard/migration. |

@@ -5,6 +5,29 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-07-10
+
+SMTP reliability release, driven by "Server not connected" failures on shared
+GPU clusters where every user exits through one NAT IP and providers drop
+simultaneous connections.
+
+### Added
+
+- **`smtp.use_ssl` config flag** — implicit SSL (SMTPS) via `smtplib.SMTP_SSL`,
+  for port 465. Useful on clusters whose firewalls interfere with STARTTLS on
+  587. The wizard auto-enables it when port 465 is entered; `config --check`
+  flags a 465/`use_ssl = false` mismatch.
+
+### Changed
+
+- **SMTP retry reworked**: 4 attempts (was 2) with exponential backoff and
+  random jitter (3 → 6 → 12 s) so parallel jobs desynchronize instead of
+  retrying in lockstep. The retry loop now also covers `SMTPConnectError`,
+  `ConnectionResetError`, and `TimeoutError` — transient drops that previously
+  bypassed the retry entirely. Failure message now explains the shared-IP
+  cause and suggests the port 465 fallback.
+- SMTP session logic extracted into `EmailNotifier._deliver()`.
+
 ## [0.1.4] — 2026-07-07
 
 Three-feature release: encrypted secret storage (Feature 1), wider artifact
@@ -142,7 +165,8 @@ Initial release. `gpualert run` / `slurm` / `config` / `test-email` / `logs` /
 `version`. Pre-launch log guarantee. 45 MB attachment budget with overflow
 zip. Pattern-based error classification. ML metric extraction.
 
-[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/Parv-01/gpualert/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/Parv-01/gpualert/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/Parv-01/gpualert/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/Parv-01/gpualert/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/Parv-01/gpualert/compare/v0.1.1...v0.1.2
