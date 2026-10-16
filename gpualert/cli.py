@@ -157,10 +157,14 @@ def run(
             start_time=result.start_time,
             cwd=scan_root,
             patterns=attach if attach else None,
+            max_single_mb=config.artifacts.max_single_file_mb,
+            max_depth=config.artifacts.scan_depth,
             end_time=result.end_time,
             skipped=excluded,
         )
-        result.notes.extend(describe_skipped(excluded))
+        result.notes.extend(
+            describe_skipped(excluded, max_single_mb=config.artifacts.max_single_file_mb)
+        )
     elif config.artifacts.attach_artifacts:
         artifact_list = []
         result.notes.append(
@@ -183,6 +187,7 @@ def run(
         log_files=result.log_files(),
         job_failed=result.is_failed(),
         attach_logs=config.email.attach_logs_on_success,
+        max_total_mb=config.artifacts.max_total_mb,
         roots=resolve_roots([scan_root] + [os.path.dirname(p) for p in result.log_files()]),
     )
     if over_budget:

@@ -73,10 +73,10 @@ plaintext password out of `config.toml` on first load and prints one stdout line
 | Field                | Type     | Default                 | Notes |
 |----------------------|----------|-------------------------|-------|
 | `attach_artifacts`   | bool     | `true`                  | Master on/off. When `false`, no output files are scanned or attached; logs still attach per `email.attach_logs_on_success`. Email body carries an explicit `NOTES` line when off. (Added in 0.1.2.) |
-| `patterns`           | string[] | see example above       | Glob patterns to scan for after the job ends. |
-| `max_single_file_mb` | int      | `25`                    | Skip any single file larger than this. |
-| `max_total_mb`       | int      | `45`                    | Total attachment budget. Overflow is zipped. |
-| `scan_depth`         | int      | `3`                     | Directory depth for the artifact scan. |
+| `patterns`           | string[] | see example above       | **Not read yet** (planned for 0.2.0; the list differs from the built-in one, so switching is a behaviour change). The scan uses the built-in list; add patterns per run with `--attach`. |
+| `max_single_file_mb` | int      | `25`                    | Skip any single file larger than this. Skipped files are named in the report. (Read since 0.1.6.) |
+| `max_total_mb`       | int      | `45`                    | Total attachment budget. Overflow is zipped; what still does not fit is named in the report. (Read since 0.1.6.) |
+| `scan_depth`         | int      | `3`                     | Directory depth for the artifact scan. (Read since 0.1.6.) |
 
 ### Top-level
 
@@ -84,7 +84,7 @@ plaintext password out of `config.toml` on first load and prints one stdout line
 |-----------|--------|----------------------|-------|
 | `verbose` | bool   | `false`              | Currently set per-run via `--verbose`. |
 | `dry_run` | bool   | `false`              | If `true`, all runs are dry-run by default. |
-| `log_dir` | string | `~/.gpualert/logs`   | Where per-job log directories live. |
+| `log_dir` | string | `~/.gpualert/logs`   | **Not read yet.** Set `GPUALERT_LOG_DIR` instead (see below). |
 
 ## Environment variables
 

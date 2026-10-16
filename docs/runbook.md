@@ -175,7 +175,8 @@ on the node for confirmation.
 The default per-file limit is 25 MB and the total budget is 45 MB. For very long-running jobs the
 combined log can grow past 25 MB and get dropped entirely. Workarounds:
 
-- Raise `artifacts.max_single_file_mb` in the config.
+- Raise `artifacts.max_single_file_mb` and `artifacts.max_total_mb` in the config (honoured
+  since 0.1.6; before that they were ignored). Anything left out is named in the report.
 - Have your training script rotate or truncate its own stdout, so the wrapper writes less.
 - Use `--no-notify` and then send the logs separately.
 

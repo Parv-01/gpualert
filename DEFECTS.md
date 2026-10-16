@@ -29,6 +29,7 @@ entry says which part is left and where it is planned).
 | D17 | files left out of the email are not named in it | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D18 | `gpualert slurm` exits 0 for a cancelled, signalled or node-failed job | critical | 0.1.6 kit | fixed in 0.1.6 |
 | D19 | the Slurm poll loop can spin on `sacct` and never reach `--timeout` | serious | ≤ 0.1.5 | fixed in 0.1.6 |
+| D20 | documented `[artifacts]` and `log_dir` settings are never read | serious | ≤ 0.1.5 | partly fixed in 0.1.6 |
 
 ---
 
@@ -273,3 +274,22 @@ either.
 an interval below 1 second.
 
 **Tests.** `tests/test_slurm_exit.py`.
+
+## D20 — documented settings that are never read
+
+**Symptom.** `docs/configuration.md` documents `artifacts.patterns`,
+`max_single_file_mb`, `max_total_mb`, `scan_depth` and top-level `log_dir`, and
+the runbook tells users to raise `max_single_file_mb` when logs bounce. None of
+them was read: `cli.run` called the scanner with its built-in defaults.
+
+**Fixed in 0.1.6.** The three numeric `[artifacts]` settings are passed through.
+Their defaults equal the built-in values, so nothing changes for anyone who has
+not set them.
+
+**Still open, planned 0.2.0.** `patterns`: the config default list differs from
+the built-in one (it adds checkpoints and YAML/TOML, drops `results*`,
+`output*`, `metrics*`, `*.out`, `*.zip`), so wiring it changes what every
+default user gets emailed. `log_dir`: needs a parameter threaded into the
+launcher; `GPUALERT_LOG_DIR` covers the need now. The docs say both are not read.
+
+**Tests.** `tests/test_artifact_scoping.py::TestConfigKnobs`.

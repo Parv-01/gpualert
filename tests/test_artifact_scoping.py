@@ -200,3 +200,43 @@ class TestCliWiring:
         assert proc.returncode == 0, proc.stderr
         assert "not regular files" in proc.stdout
         assert "loss=0.5000" in proc.stdout
+
+
+class TestConfigKnobs:
+    def _run(self, cfg, script):
+        with patch("gpualert.cli.load_config", return_value=cfg):
+            return CliRunner().invoke(app, ["run", "--dry-run", "--", sys.executable, "-c", script])
+
+    def _cfg(self, **artifacts_overrides):
+        from gpualert.config import GPUAlertConfig
+
+        cfg = GPUAlertConfig()
+        for key, value in artifacts_overrides.items():
+            setattr(cfg.artifacts, key, value)
+        return cfg
+
+    def test_max_single_file_mb_is_honoured(self, home, work):
+        out = self._run(
+            self._cfg(max_single_file_mb=1), "open('w.npy','wb').write(b'0' * (2 * 1024 * 1024))"
+        )
+        assert "larger than the 1 MB per-file limit: w.npy" in out.output
+
+    def test_scan_depth_is_honoured(self, home, work):
+        script = (
+            "import os; os.makedirs('a/b', exist_ok=True); "
+            "open('a/b/results.json','w').write('{}'); open('top.csv','w').write('x')"
+        )
+        out = self._run(self._cfg(scan_depth=1), script)
+        attach_line = next(line for line in out.output.splitlines() if line.startswith("Attach :"))
+        assert "top.csv" in attach_line
+        assert "results.json" not in attach_line
+
+    def test_max_total_mb_is_honoured(self, home, work):
+        # Random bytes, so the overflow zip cannot compress its way back
+        # under the budget.
+        script = (
+            "import os; open('a.npy','wb').write(os.urandom(600_000)); "
+            "open('b.npy','wb').write(os.urandom(600_000))"
+        )
+        out = self._run(self._cfg(max_total_mb=1), script)
+        assert "over the email size budget" in out.output
