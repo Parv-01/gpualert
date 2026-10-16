@@ -15,7 +15,7 @@ entry says which part is left and where it is planned).
 | D3 | only the direct child is killed; launcher workers are orphaned | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | open |
 | D5 | `run_job` raises when the log directory cannot be created | critical | ≤ 0.1.5 | open |
-| D6 | `get_tail()` loads the whole file into memory | serious | ≤ 0.1.5 | open |
+| D6 | `get_tail()` loads the whole file into memory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D7 | no log rotation or size cap | serious | ≤ 0.1.5 | open, planned 0.2.0 |
 | D8 | no GPU awareness | serious | ≤ 0.1.5 | open, planned 0.3.0 |
 | D9 | no cross-job registry | serious | ≤ 0.1.5 | open, planned 0.4.0 |
@@ -91,7 +91,14 @@ never-raises contract. On HPC a full home is normal.
 
 **Measured.** A 25 MB log costs about 52 MB extra to read 50 lines.
 
-**Tests.** `test_output_shapes.py::TestTailReader::test_tail_memory_is_independent_of_file_size`.
+**Tests.** `test_output_shapes.py::TestTailReader::test_tail_memory_is_independent_of_file_size`,
+`tests/test_tail_reader.py`.
+
+**Fix (0.1.6).** Reads backwards in 64 KiB blocks and stops after enough line
+breaks or 2 MiB, whichever comes first. Peak memory for 50 lines of a 21 MB log
+is under 1 MB. Output is identical to the old reader for any file inside the
+budget: checked against it on 20,000 random files mixing CR, LF, CRLF, invalid
+bytes and multi-byte characters with block sizes down to one byte.
 
 ## D7 — no log rotation or size cap
 

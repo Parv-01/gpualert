@@ -101,13 +101,58 @@ def write_to_log(log_path: str, text: str, lock: Optional[threading.Lock] = None
         pass
 
 
-def get_tail(log_path: str, n_lines: int = 50) -> str:
-    """Return last n_lines of log_path. Returns '' on any error."""
+# get_tail reads backwards in blocks of this size and gives up after
+# _TAIL_MAX_BYTES, so its memory cost does not depend on the file size.
+_TAIL_BLOCK = 64 * 1024
+_TAIL_MAX_BYTES = 2 * 1024 * 1024
+
+
+def _split_lines(text: str) -> List[str]:
+    # The same lines readlines() gives in text mode: \r\n and bare \r both
+    # end a line and come back as \n. str.splitlines would also split on
+    # form feeds and Unicode separators, which readlines never did.
+    parts = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    lines = [p + "\n" for p in parts[:-1]]
+    if parts[-1]:
+        lines.append(parts[-1])
+    return lines
+
+
+def get_tail(log_path: str, n_lines: int = 50, max_bytes: int = _TAIL_MAX_BYTES) -> str:
+    """Return the last n_lines of log_path. Returns '' on any error.
+
+    Reads from the end of the file in blocks rather than loading it, so a
+    multi-GB log costs at most max_bytes of memory (D6). If the last line
+    alone is longer than max_bytes, its final max_bytes are returned behind
+    a "[...]" marker.
+    """
     try:
-        if not log_path or not os.path.isfile(log_path):
+        if n_lines <= 0 or not log_path or not os.path.isfile(log_path):
             return ""
-        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
+        blocks: List[bytes] = []
+        breaks = 0
+        with open(log_path, "rb") as f:
+            pos = f.seek(0, os.SEEK_END)
+            budget = max_bytes
+            # Stop once the blocks hold n_lines + 1 line breaks: the extra one
+            # marks where the first wanted line starts.
+            while pos > 0 and budget > 0 and breaks <= n_lines:
+                step = min(_TAIL_BLOCK, pos, budget)
+                pos -= step
+                f.seek(pos)
+                block = f.read(step)
+                breaks += block.count(b"\n") + block.count(b"\r") - block.count(b"\r\n")
+                if blocks and block.endswith(b"\r") and blocks[-1].startswith(b"\n"):
+                    breaks -= 1  # a \r\n pair split across two blocks
+                blocks.append(block)
+                budget -= len(block)
+        data = b"".join(reversed(blocks))
+        lines = _split_lines(data.decode("utf-8", errors="replace"))
+        at_start = pos == 0
+        if not at_start and len(lines) > 1:
+            lines = lines[1:]  # began mid-line
+        elif not at_start and lines:
+            lines[0] = "[...]" + lines[0]
         return "".join(lines[-n_lines:])
     except Exception:
         return ""

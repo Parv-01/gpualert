@@ -72,11 +72,6 @@ class TestVolume:
 
 class TestTailReader:
     @pytest.mark.slow
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D6: get_tail() calls readlines() on the whole file, so a multi-GB "
-        "log OOMs the wrapper exactly when it is reporting a failure",
-    )
     def test_tail_memory_is_independent_of_file_size(self, tmp_path):
         # tracemalloc, not RSS: the resident set is a high-water mark for the
         # whole process and stays inflated by earlier tests, which would let
