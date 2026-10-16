@@ -39,17 +39,31 @@ exception silently — a log write failure must never mask the actual job result
 
 ## Subprocess streaming
 
-`launcher.run_job` starts the child with piped stdout/stderr, then spawns two daemon threads:
+`launcher.run_job` starts the child with binary, unbuffered pipes and hands each one to a
+`capture.StreamReader` running in a daemon thread. The reader decodes the bytes itself, with an
+incremental decoder, so:
 
-- `reader_thread(stdout, stdout.log, "OUT")`
-- `reader_thread(stderr, stderr.log, "ERR")`
+- no byte sequence can stop the stream: invalid bytes become U+FFFD and are counted;
+- a multi-byte character or a CRLF split across two reads comes out whole;
+- a bare `\r` still ends a line, as universal newlines did, so progress bars stay readable;
+- a line longer than 64 KiB is written in pieces instead of being held in memory.
 
-Each thread reads lines, timestamps them (`HH:MM:SS`), writes to both the stream-specific log and
-the merged `combined.log`. The merged log is the one we usually attach to emails because it
-preserves interleaving.
+Each line gets an `HH:MM:SS` prefix and is written to its own log and to `combined.log` through a
+`LogSink`, which keeps the three files open for the job and writes without a userspace buffer.
 
-After `proc.wait()` (or `proc.kill()` on timeout) the threads are joined with a 5-second cap to
-avoid hanging on stuck pipes.
+Anything that goes wrong is reported, not swallowed: decoding replacements, a reader that stops
+early (it keeps draining the pipe so the child cannot block), a log that rejects writes (disk full),
+and a pipe still held open by a background process after the child exits. Each becomes a note in
+the result, the log footer and the email.
+
+After `proc.wait()` (or `proc.kill()` on timeout) both readers are joined under one 5-second
+deadline. If the wrapper itself fails after the child started, the child is killed and reaped.
+
+## Where logs go
+
+`$GPUALERT_LOG_DIR` if set, else `~/.gpualert/logs`. If that cannot be created or written, a
+private `mkdtemp` directory (mode 700, random name); if that fails too, memory only, and the report
+still carries the stream tails. The report says which of these happened.
 
 ## Slurm polling
 
@@ -70,22 +84,43 @@ State to status mapping:
 If `sacct` is missing entirely, `is_slurm_available()` returns false and the CLI errors out
 before polling starts.
 
+`ExitCode` is `EXIT:SIGNAL`. A non-zero EXIT is the exit code; `0:N` with N a signal becomes -N,
+which the CLI turns into 128+N like a shell. A result that is not `success` never exits 0. The
+`--timeout` clock is monotonic and the poll interval is at least one second.
+
 ## Artifact scanning and the attachment budget
 
-After the job finishes, `artifacts.find_artifacts` walks the working directory (depth-limited,
-skipping known cache/build dirs) and collects files newer than `start_time` that match the
-configured glob patterns. Anything larger than `max_single_file_mb` is dropped.
+After the job finishes, `artifacts.find_artifacts` walks the job's launch directory (recorded by
+`run_job`, depth-limited, skipping cache/build dirs and every hidden directory). A file is collected
+only if it matches a pattern and is:
+
+- a regular file (pipes, sockets and devices are refused);
+- owned by the user running the wrapper;
+- modified between the job's start and end (plus 2 s for coarse filesystem timestamps);
+- inside the run directory (a symlink pointing out of it is refused);
+- no larger than `max_single_file_mb`.
+
+Each file that matched a pattern but failed a rule is recorded by reason and reported in the email's
+NOTES section. Other users' files are counted, never named.
+
+It cannot tell apart two of the same user's jobs writing into one directory; that needs to know which
+process created each file. Give concurrent jobs their own directories.
 
 `prepare_attachments` then packs the list into the email:
 
 1. Log files are added first. On failure, this is unconditional; on success, it follows
    `attach_logs_on_success`.
 2. Artifacts are added in size order until `max_total_mb` would be exceeded.
-3. Whatever didn't fit goes into `artifacts_overflow.zip` next to the log files. If the zip itself
-   busts the budget, it's listed under `skipped` and the user is told.
+3. Whatever didn't fit goes into `artifacts_overflow.zip` in the job's log directory (never the
+   working directory). If the zip itself busts the budget, its contents are listed as skipped.
 
-This means the email is bounded in size and never silently drops files — you either see them
-attached, or you see them in the `Skipped` line of the email body.
+Files are opened again when they are attached, zipped or parsed for metrics. Those reads go through
+`safe_io.open_verified`, which refuses a symlink, a non-regular file, another user's file, and (on
+Linux and macOS, checked on the open descriptor) anything outside the run and log directories. A file
+swapped after the scan is refused and listed.
+
+The email is bounded in size and never silently drops files: everything is either attached or named
+in NOTES.
 
 ## Error classification
 

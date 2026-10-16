@@ -58,18 +58,23 @@ your callback should not crash the poll loop.
 ```python
 from datetime import datetime
 from gpualert.artifacts import (
+    describe_skipped,
     find_artifacts,
     prepare_attachments,
     summarize_artifacts,
 )
 
+excluded = {}
 artifacts = find_artifacts(
-    start_time=datetime.now(),
-    cwd=".",
+    start_time=result.start_time,
+    cwd=result.cwd,
     patterns=["*.csv", "*.png"],
     max_single_mb=25.0,
     max_depth=3,
+    end_time=result.end_time,     # 0.1.6+: upper bound of the run window
+    skipped=excluded,             # 0.1.6+: filled with {reason: [relative paths]}
 )
+notes = describe_skipped(excluded)  # 0.1.6+: report lines for what was left out
 
 attach_list, skipped = prepare_attachments(
     artifacts=artifacts,
@@ -77,11 +82,13 @@ attach_list, skipped = prepare_attachments(
     job_failed=False,
     max_total_mb=45.0,
     attach_logs=True,
+    roots=["/path/to/run", "/path/to/logs"],  # 0.1.6+: read-time containment for the zip
 )
 ```
 
-`find_artifacts` walks `cwd` (skipping `.git`, `__pycache__`, virtualenvs, etc.) and returns files
-newer than `start_time` that match `patterns`. `prepare_attachments` decides which of those — plus
+`find_artifacts` walks `cwd` (skipping hidden directories, `__pycache__`, virtualenvs, etc.) and
+returns regular files owned by the current user, modified inside the run window, that match
+`patterns`. Hidden files are only considered when a pattern starts with a dot. `prepare_attachments` decides which of those — plus
 the log files — actually go into the email, enforcing the per-file and total-size budgets. Any
 files that don't fit get zipped into `artifacts_overflow.zip` alongside the logs.
 
@@ -197,6 +204,8 @@ class JobResult:
     stderr_tail: str = ""          # last 50 lines
     error_summary: str = ""        # human-readable, derived from parse_errors
     artifacts: list = []
+    notes: list = []               # report lines: fallbacks, replacements, skipped files
+    cwd: str = ""                  # 0.1.6+: absolute launch directory, "" if unknown
 ```
 
 Helpers:

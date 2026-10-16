@@ -68,8 +68,10 @@ If you use GPUAlert in research, please cite:
 - Always attaches logs to failure emails. Non-negotiable.
 - Auto-detects ML metrics in successful runs (`accuracy`, `loss`, `F1`, `mAP`, ...) and surfaces
   them in the email body.
-- Scans the working directory for output artifacts after the job ends; budgets the email and
-  zips the overflow.
+- Attaches the output files your job wrote in its own directory during the run (never another
+  user's, never hidden directories); budgets the email, zips the overflow, and names anything it
+  left out. Two of your own jobs sharing one directory can still pick up each other's outputs, so
+  give parallel runs their own directories.
 - `--dry-run` prints the email it would send without touching SMTP - useful for debugging.
 
 ## Quick start
