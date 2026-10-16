@@ -24,8 +24,8 @@ entry says which part is left and where it is planned).
 | D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | fixed in 0.1.6 |
 | D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | fixed in 0.1.6 |
-| D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | open |
-| D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | open |
+| D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | fixed in 0.1.6 |
+| D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | fixed in 0.1.6 |
 | D17 | files left out of the email are not named in it | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
@@ -202,7 +202,15 @@ considered when a pattern itself starts with a dot (`--attach '.results*'`).
 attachment again by path. A file replaced by a symlink between the scan and the
 send is followed, so a file outside the run directory can still be attached.
 
-**Tests.** `test_artifact_safety.py::TestReadTimeContainment`.
+**Tests.** `test_artifact_safety.py::TestReadTimeContainment`, `tests/test_safe_io.py`.
+
+**Fix (0.1.6).** `gpualert/safe_io.py`. The notifier, the overflow zip and the
+metrics reader open files with `O_NOFOLLOW | O_NONBLOCK`, then check the
+descriptor: regular file, owned by the euid, and (for the notifier and zip)
+really located inside the run or log directory. On Linux and macOS the real
+location comes from the descriptor (`/proc/self/fd`, `F_GETPATH`), so an
+intermediate directory swapped for a symlink is caught, not only the last
+component. Refusals are listed in the notifier's skip message.
 
 ## D16 — overflow zip written into the working directory
 
@@ -212,7 +220,13 @@ of the same name, and the next run in that directory picks the zip up as an
 artifact (`*.zip` is a default pattern). Found because the harness left the zip
 in the repo root.
 
-**Tests.** `test_contracts.py::TestNonSilentBudget::test_overflow_zip_is_never_written_into_the_working_directory`.
+**Tests.** `test_contracts.py::TestNonSilentBudget::test_overflow_zip_is_never_written_into_the_working_directory`,
+`tests/test_safe_io.py::TestOverflowZip`.
+
+**Fix (0.1.6).** The zip is only built inside the job's log directory. With no
+log directory the overflow is returned as skipped, which the report names.
+Members with the same basename now get distinct names (`metrics_2.csv`)
+instead of duplicate zip entries.
 
 ## D17 — files left out of the email are not named in it
 

@@ -118,11 +118,6 @@ def _sent_attachment_bodies(attachments):
 
 
 class TestReadTimeContainment:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D15: attachments are re-opened by path at send time, so a file "
-        "swapped for an outward symlink after the scan is followed",
-    )
     def test_file_swapped_for_a_symlink_after_the_scan_is_not_sent(self, workdir, tmp_path):
         secret = tmp_path / "outside" / "id_rsa"
         secret.parent.mkdir()

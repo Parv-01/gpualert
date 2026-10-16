@@ -26,12 +26,14 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import shutil
 import stat
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+from gpualert.safe_io import UnsafeFileError, open_verified
 from gpualert.types import ArtifactFile
 
 # Author signature in an internal default.
@@ -228,13 +230,39 @@ def describe_skipped(skipped: Dict[str, List[str]], max_single_mb: float = 25.0)
     return lines
 
 
-def compress_artifacts(artifacts: List[str], output_path: str) -> Optional[str]:
-    """Zip the given files. Returns output_path on success, None on failure."""
+def _unique_arcname(name: str, used: set) -> str:
+    # Two outputs with one basename (runs/a/metrics.csv, runs/b/metrics.csv)
+    # would otherwise become duplicate zip members, and most unzip tools
+    # keep only one of them.
+    candidate, n = name, 1
+    stem, ext = os.path.splitext(name)
+    while candidate in used:
+        n += 1
+        candidate = f"{stem}_{n}{ext}"
+    used.add(candidate)
+    return candidate
+
+
+def compress_artifacts(
+    artifacts: List[str], output_path: str, roots: Optional[List[str]] = None
+) -> Optional[str]:
+    """Zip the given files. Returns output_path on success, None on failure.
+
+    Each file is opened through safe_io.open_verified, so a file swapped for
+    a symlink or a pipe after the scan is left out rather than followed.
+    """
     try:
+        used: set = set()
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for fp in artifacts:
-                if fp and os.path.isfile(fp):
-                    zf.write(fp, arcname=os.path.basename(fp))
+                if not fp or not os.path.isfile(fp):
+                    continue
+                try:
+                    src = open_verified(fp, roots=roots)
+                except (UnsafeFileError, OSError):
+                    continue
+                with src, zf.open(_unique_arcname(os.path.basename(fp), used), "w") as dst:
+                    shutil.copyfileobj(src, dst, 1024 * 1024)
         return output_path
     except Exception:
         return None
@@ -246,8 +274,15 @@ def prepare_attachments(
     job_failed: bool,
     max_total_mb: float = 45.0,
     attach_logs: bool = True,
+    roots: Optional[List[str]] = None,
 ) -> Tuple[List[str], List[str]]:
-    """Decide which files to attach. Logs always included on failure."""
+    """Decide which files to attach. Logs always included on failure.
+
+    Returns (to_attach, skipped). Overflow is zipped into the job's log
+    directory; with no log directory there is nowhere private to build the
+    zip, so overflow is returned as skipped instead of written into the
+    working directory (D16).
+    """
     to_attach: List[str] = []
     skipped: List[str] = []
 
@@ -270,10 +305,12 @@ def prepare_attachments(
         else:
             overflow.append(art.path)
 
-    if overflow:
-        zip_dir = os.path.dirname(log_files[0]) if log_files else os.getcwd()
-        zip_path = os.path.join(zip_dir, "artifacts_overflow.zip")
-        packed = compress_artifacts(overflow, zip_path)
+    log_dir = next((os.path.dirname(lf) for lf in log_files or [] if lf), "")
+    if overflow and not log_dir:
+        skipped.extend(overflow)
+    elif overflow:
+        zip_path = os.path.join(log_dir, "artifacts_overflow.zip")
+        packed = compress_artifacts(overflow, zip_path, roots=roots)
         if packed and os.path.isfile(packed):
             packed_size = os.path.getsize(packed)
             if used_bytes + packed_size <= budget_bytes:

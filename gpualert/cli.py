@@ -31,6 +31,7 @@ from gpualert.config_manager import init_config_interactive
 from gpualert.launcher import run_job
 from gpualert.log_manager import log_dir_label
 from gpualert.notifier.email_notifier import get_notifier
+from gpualert.safe_io import resolve_roots
 from gpualert.slurm import (
     SlurmNotAvailableError,
     is_slurm_available,
@@ -144,6 +145,8 @@ def run(
     # NOTES line is added to the email body so the recipient never has to
     # guess why no artifacts were sent.
     scan_root = result.cwd or _cwd_or_empty()
+    # The notifier only reads attachments from inside these directories.
+    result.cwd = scan_root
     if config.artifacts.attach_artifacts and scan_root:
         excluded: dict = {}
         artifact_list = find_artifacts(
@@ -176,6 +179,7 @@ def run(
         log_files=result.log_files(),
         job_failed=result.is_failed(),
         attach_logs=config.email.attach_logs_on_success,
+        roots=resolve_roots([scan_root] + [os.path.dirname(p) for p in result.log_files()]),
     )
     if over_budget:
         names = [os.path.basename(p) for p in over_budget if p]

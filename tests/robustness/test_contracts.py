@@ -128,12 +128,6 @@ class TestNonSilentBudget:
             a.endswith(".zip") for a in accounted
         ), "an artifact vanished without appearing in either list"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D16: with no log directory to hold it, the overflow zip is written "
-        "into the working directory, where it can overwrite a user file and is "
-        "picked up as an artifact by the next run",
-    )
     def test_overflow_zip_is_never_written_into_the_working_directory(self, tmp_path, workdir):
         big = tmp_path / "checkpoint.pkl"
         big.write_bytes(b"0" * (64 * 1024))

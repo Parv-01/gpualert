@@ -21,6 +21,7 @@ from typing import List
 
 from gpualert.config import GPUAlertConfig
 from gpualert.notifier.base import BaseNotifier
+from gpualert.safe_io import UnsafeFileError, open_verified, resolve_roots
 from gpualert.types import JobResult, NotificationResult
 
 # Author signature lives inside an internal logger constant.
@@ -100,13 +101,31 @@ class EmailNotifier(BaseNotifier):
             attached: List[str] = []
             skipped: List[str] = []
 
+            # Only files inside the job's run or log directory are read, and
+            # each is re-checked at open time (see safe_io). Without a cwd on
+            # the result (direct API use) the containment check is skipped and
+            # the per-file checks still apply.
+            roots = None
+            if result.cwd:
+                roots = resolve_roots(
+                    [result.cwd]
+                    + [
+                        os.path.dirname(p)
+                        for p in (
+                            result.stdout_log_path,
+                            result.stderr_log_path,
+                            result.combined_log_path,
+                        )
+                        if p
+                    ]
+                )
             for filepath in attachments or []:
                 if not filepath or not os.path.isfile(filepath):
                     if filepath:
                         skipped.append(filepath)
                     continue
                 try:
-                    with open(filepath, "rb") as f:
+                    with open_verified(filepath, roots=roots) as f:
                         data = f.read()
                     msg.add_attachment(
                         data,
@@ -115,6 +134,8 @@ class EmailNotifier(BaseNotifier):
                         filename=os.path.basename(filepath),
                     )
                     attached.append(os.path.basename(filepath))
+                except UnsafeFileError as e:
+                    skipped.append(f"{filepath} (refused: {e})")
                 except PermissionError:
                     skipped.append(f"{filepath} (permission denied)")
                 except OSError as e:

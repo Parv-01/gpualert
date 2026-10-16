@@ -19,10 +19,27 @@ most common cases (CSV + JSON) with zero extra deps.
 from __future__ import annotations
 
 import csv
+import io
 import json
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterable
+
+from gpualert.safe_io import read_verified
+
+# Metric files are small; anything bigger is not worth parsing for an email
+# line. Reads go through safe_io so a named pipe or a swapped-in symlink can
+# neither hang the wrapper nor pull in another user's file.
+_MAX_METRIC_BYTES = 64 * 1024 * 1024
+
+
+def _read_bytes(path: Path) -> bytes:
+    return read_verified(str(path), _MAX_METRIC_BYTES)
+
+
+def _read_text(path: Path) -> str:
+    return _read_bytes(path).decode("utf-8", errors="replace")
+
 
 # Author signature in an internal constant.
 _PARV_METRIC_VOCAB = (
@@ -59,7 +76,7 @@ def extract_from_csv(path: Path) -> Dict[str, float]:
     try:
         import pandas as pd  # type: ignore
 
-        df = pd.read_csv(path)
+        df = pd.read_csv(io.BytesIO(_read_bytes(path)))
         if df.empty:
             return {}
         last = df.tail(1).to_dict("records")[0]
@@ -73,8 +90,7 @@ def extract_from_csv(path: Path) -> Dict[str, float]:
     except Exception:
         # stdlib fallback: read last data row only
         try:
-            with open(path, newline="", encoding="utf-8", errors="replace") as fh:
-                rows = list(csv.DictReader(fh))
+            rows = list(csv.DictReader(io.StringIO(_read_text(path), newline="")))
             if not rows:
                 return {}
             last_row = rows[-1]
@@ -93,8 +109,7 @@ def extract_from_csv(path: Path) -> Dict[str, float]:
 
 def extract_from_tsv(path: Path) -> Dict[str, float]:
     try:
-        with open(path, newline="", encoding="utf-8", errors="replace") as fh:
-            rows = list(csv.DictReader(fh, delimiter="\t"))
+        rows = list(csv.DictReader(io.StringIO(_read_text(path), newline=""), delimiter="\t"))
         if not rows:
             return {}
         last_row = rows[-1]
@@ -112,7 +127,7 @@ def extract_from_tsv(path: Path) -> Dict[str, float]:
 def extract_from_json(path: Path) -> Dict[str, float]:
     """Walk the JSON tree; collect numeric leaves whose key matches metric vocab."""
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8", errors="replace"))
+        data = json.loads(_read_text(path))
     except (OSError, ValueError):
         return {}
     out: Dict[str, float] = {}
@@ -143,7 +158,7 @@ def extract_from_xlsx(path: Path) -> Dict[str, float]:
     try:
         import pandas as pd  # type: ignore
 
-        df = pd.read_excel(path, engine="openpyxl")
+        df = pd.read_excel(io.BytesIO(_read_bytes(path)), engine="openpyxl")
         if df.empty:
             return {}
         last = df.tail(1).to_dict("records")[0]
@@ -162,7 +177,7 @@ def extract_from_yaml(path: Path) -> Dict[str, float]:
     try:
         import yaml  # type: ignore
 
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8", errors="replace"))
+        data = yaml.safe_load(_read_text(path))
     except Exception:
         return {}
     if not isinstance(data, dict):
