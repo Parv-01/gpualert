@@ -32,6 +32,7 @@ entry says which part is left and where it is planned).
 | D20 | documented `[artifacts]` and `log_dir` settings are never read | serious | ≤ 0.1.5 | partly fixed in 0.1.6 |
 | D21 | a newline in the command or a file name makes the whole email fail | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D22 | `gpualert run` crashes before starting the job when `~/.gpualert` cannot be created | critical | ≤ 0.1.5 | fixed in 0.1.6 |
+| D23 | `[/...]` in a command, path or message crashes the CLI through Rich markup | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
 
@@ -324,3 +325,19 @@ created or read it returns defaults, email stays unconfigured (the notifier says
 so), and the job runs with its exit status preserved.
 
 **Tests.** `tests/test_log_fallback.py::TestCliWithUnusableHome`.
+
+## D23 — Rich markup in job-controlled text crashes the CLI
+
+**Symptom.** The CLI prints the command, log paths, the error line and the
+notifier's message through Rich, which parses `[tags]`. Any of them containing
+a closing-tag shape such as `[/x]` raised `MarkupError`. In the start banner
+that happened before the job ran, so the job never started; a Hydra list
+override like `data.dirs=[/scratch/a,/scratch/b]` is enough. After the job, it
+replaced the job's exit status with 1, breaking the rule that the wrapper's
+status is a pure function of the job's. An output path such as
+`out[/b]big.npy` in the notifier's skip list did the same.
+
+**Fix (0.1.6).** Every value that comes from the job, the filesystem or the
+notifier is passed through `rich.markup.escape` before printing.
+
+**Tests.** `tests/test_cli_markup.py`.

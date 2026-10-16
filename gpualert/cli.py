@@ -16,6 +16,7 @@ from typing import List, Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -49,7 +50,13 @@ console = Console()
 def _print_log_paths(result) -> None:
     console.print("\n[bold]Log files written:[/bold]")
     for lf in result.log_files():
-        console.print(f"  [dim]-[/dim] {lf}")
+        console.print(f"  [dim]-[/dim] {escape(str(lf))}")
+    # Notes from the run itself (log fallback, decode replacements, capture
+    # problems). Shown here too, so --no-notify users see them.
+    for note in result.notes or []:
+        # Notes can carry file names from the job; escape them so a name
+        # like "[/]" is printed, not parsed as Rich markup.
+        console.print(f"[yellow]Note:[/yellow] {escape(str(note))}", highlight=False)
 
 
 def _print_result_table(result) -> None:
@@ -66,7 +73,7 @@ def _print_result_table(result) -> None:
     if result.error_summary:
         label = "Error" if result.is_failed() else "Metrics"
         first_line = result.error_summary.split("\n")[0][:80]
-        table.add_row(label, first_line)
+        table.add_row(label, escape(first_line))
     console.print(table)
 
 
@@ -126,8 +133,8 @@ def run(
     console.print(
         Panel(
             f"[bold cyan]GPUAlert[/bold cyan] v{__version__}\n"
-            f"[dim]Command:[/dim] {' '.join(cmd)}\n"
-            f"[dim]Logs   :[/dim] {log_dir_label()}",
+            f"[dim]Command:[/dim] {escape(' '.join(cmd))}\n"
+            f"[dim]Logs   :[/dim] {escape(log_dir_label())}",
             title="Starting Job",
             border_style="cyan",
         )
@@ -215,9 +222,9 @@ def run(
         note = notifier.send(result, attach_files)
 
     if note.success:
-        console.print(f"\n[green]Email: {note.message}[/green]")
+        console.print(f"\n[green]Email: {escape(note.message)}[/green]")
     else:
-        console.print(f"\n[red]Notification failed: {note.message}[/red]")
+        console.print(f"\n[red]Notification failed: {escape(note.message)}[/red]")
         console.print("[dim]Logs are still saved locally (see paths above)[/dim]")
 
     raise typer.Exit(_shell_exit_code(result))
@@ -255,13 +262,13 @@ def slurm(
     )
 
     def on_update(info):
-        console.print(f"[dim][{info.state}][/dim] elapsed {info.elapsed_seconds:.0f}s")
+        console.print(f"[dim]\\[{escape(info.state)}][/dim] elapsed {info.elapsed_seconds:.0f}s")
 
     try:
         with console.status("[bold yellow]Waiting for Slurm job...[/bold yellow]"):
             result = poll_job(job_id, interval=interval, timeout=timeout, on_update=on_update)
     except SlurmNotAvailableError as e:
-        console.print(f"[red]{e}[/red]")
+        console.print(f"[red]{escape(str(e))}[/red]")
         raise typer.Exit(1)
 
     _print_log_paths(result)
@@ -273,9 +280,9 @@ def slurm(
     )
     note = get_notifier(config, dry_run=dry_run).send(result, attach_files)
     if note.success:
-        console.print(f"[green]Email: {note.message}[/green]")
+        console.print(f"[green]Email: {escape(note.message)}[/green]")
     else:
-        console.print(f"[red]{note.message}[/red]")
+        console.print(f"[red]{escape(note.message)}[/red]")
 
     raise typer.Exit(_shell_exit_code(result))
 
@@ -311,7 +318,7 @@ def config(
         else:
             console.print("[red]Config has problems:[/red]")
             for err in errors:
-                console.print(f"  - {err}")
+                console.print(f"  - {escape(str(err))}")
             raise typer.Exit(1)
         return
     if test_email:
@@ -351,7 +358,7 @@ def _send_test_email(cfg: GPUAlertConfig) -> None:
     if not ok:
         console.print("[red]Config has problems:[/red]")
         for err in errors:
-            console.print(f"  - {err}")
+            console.print(f"  - {escape(str(err))}")
         console.print("\nRun: gpualert config --init")
         raise typer.Exit(1)
 
@@ -367,9 +374,9 @@ def _send_test_email(cfg: GPUAlertConfig) -> None:
     note = get_notifier(cfg).send(probe, [])
     if note.success:
         console.print("[green]Test email sent.[/green]")
-        console.print(f"[dim]{note.message}[/dim]")
+        console.print(f"[dim]{escape(note.message)}[/dim]")
     else:
-        console.print(f"[red]Test email failed: {note.message}[/red]")
+        console.print(f"[red]Test email failed: {escape(note.message)}[/red]")
         raise typer.Exit(1)
 
 
@@ -392,7 +399,7 @@ def logs(
     table.add_column("Size")
     for entry in recent:
         table.add_row(
-            str(entry["dir"]),
+            escape(str(entry["dir"])),
             entry["created"].strftime("%Y-%m-%d %H:%M:%S") if entry.get("created") else "?",
             f"{entry.get('size_mb', 0):.2f} MB",
         )
@@ -437,7 +444,8 @@ def _run_purge(keep_logs: bool, yes: bool) -> None:
 
     if not yes:
         console.print(
-            f"[yellow]About to delete all GPUAlert secrets and config under " f"{cfg_dir}.[/yellow]"
+            "[yellow]About to delete all GPUAlert secrets and config under "
+            f"{escape(str(cfg_dir))}.[/yellow]"
         )
         if keep_logs:
             console.print("[dim]Logs will be preserved (--keep-logs).[/dim]")
@@ -477,10 +485,12 @@ def _run_purge(keep_logs: bool, yes: bool) -> None:
                     child.unlink(missing_ok=True)
             except OSError:
                 pass
-        console.print(f"[green]Secrets and config removed.[/green] Logs preserved at {logs_dir}.")
+        console.print(
+            f"[green]Secrets and config removed.[/green] Logs preserved at {escape(str(logs_dir))}."
+        )
     else:
         shutil.rmtree(cfg_dir, ignore_errors=True)
-        console.print(f"[green]Removed {cfg_dir} and all secrets.[/green]")
+        console.print(f"[green]Removed {escape(str(cfg_dir))} and all secrets.[/green]")
 
     console.print("[dim]Now run:  pip uninstall gpualert[/dim]")
 

@@ -243,3 +243,17 @@ class TestCliWithUnusableHome:
             assert out.exit_code == 9, out.output
         finally:
             ro.chmod(0o700)
+
+
+def test_cli_prints_run_notes_even_without_notification(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from gpualert.cli import app
+
+    not_a_dir = tmp_path / "file-home"
+    not_a_dir.write_text("")
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: not_a_dir))
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    out = CliRunner().invoke(app, ["run", "--no-notify", "--", sys.executable, "-c", "pass"])
+    assert "could not be used" in " ".join(out.output.split())
