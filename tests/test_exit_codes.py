@@ -134,3 +134,32 @@ class TestReportingCannotChangeTheStatus:
             res = runner.invoke(app, ["run", "--", sys.executable, "-c", "pass"])
         assert res.exit_code == 0
         assert "Reporting failed" in res.output
+
+
+@posix_only
+def test_closed_stdout_pipe_keeps_the_job_status(tmp_path):
+    # `gpualert run ... | head -2`: once head exits, every write to stdout
+    # fails. Rich used to answer that with SystemExit(1).
+    import subprocess as sp
+
+    script = "import sys\nfor i in range(200000): print(i)\nsys.exit(5)"
+    wrapper = sp.Popen(
+        [
+            sys.executable,
+            "-c",
+            "from gpualert.cli import app; app(prog_name='gpualert')",
+            "run",
+            "-v",
+            "--no-notify",
+            "--",
+            sys.executable,
+            "-c",
+            script,
+        ],
+        cwd=tmp_path,
+        stdout=sp.PIPE,
+        stderr=sp.DEVNULL,
+    )
+    wrapper.stdout.read(10)
+    wrapper.stdout.close()
+    assert wrapper.wait(timeout=120) == 5

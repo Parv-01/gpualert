@@ -12,6 +12,7 @@ Every command that runs or monitors a job is responsible for:
 from __future__ import annotations
 
 import os
+import sys
 from typing import List, Optional
 
 import typer
@@ -45,7 +46,23 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
-console = Console()
+
+
+class _Console(Console):
+    def on_broken_pipe(self) -> None:
+        # Rich's default raises SystemExit(1) when stdout is a closed pipe
+        # (`gpualert run ... | head`), which replaced the job's exit status.
+        # Drop further output instead, and point stdout at /dev/null so the
+        # interpreter's final flush cannot fail either.
+        self.quiet = True
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
+        except (OSError, ValueError, AttributeError):
+            pass
+
+
+console = _Console()
 
 
 def _print_log_paths(result) -> None:
