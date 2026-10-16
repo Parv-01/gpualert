@@ -31,6 +31,7 @@ entry says which part is left and where it is planned).
 | D19 | the Slurm poll loop can spin on `sacct` and never reach `--timeout` | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D20 | documented `[artifacts]` and `log_dir` settings are never read | serious | ≤ 0.1.5 | partly fixed in 0.1.6 |
 | D21 | a newline in the command or a file name makes the whole email fail | critical | ≤ 0.1.5 | fixed in 0.1.6 |
+| D22 | `gpualert run` crashes before starting the job when `~/.gpualert` cannot be created | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
 
@@ -310,3 +311,16 @@ lost mail, not header injection.
 removed; attachment names have control characters replaced with `_`.
 
 **Tests.** `tests/test_email_headers.py`.
+
+## D22 — the CLI crashes before the job starts on a read-only home
+
+**Symptom.** Found by running the CLI as an ordinary user with a read-only
+home. `run_job` survived it (D5), but `cli.run` calls `load_config()` first, and
+`get_config_path()` creates `~/.gpualert`; the `PermissionError` escaped as a
+traceback and the job never ran. Same with a home that is not a directory.
+
+**Fix (0.1.6).** `load_config()` never raises: if the config directory cannot be
+created or read it returns defaults, email stays unconfigured (the notifier says
+so), and the job runs with its exit status preserved.
+
+**Tests.** `tests/test_log_fallback.py::TestCliWithUnusableHome`.

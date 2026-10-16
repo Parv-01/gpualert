@@ -190,3 +190,56 @@ class TestDiskFullMidRun:
         result = run_job(_py("print('early'); print('RuntimeError: CUDA error: late')"))
         assert "CUDA error: late" in result.stdout_tail
         assert any("stdout.log failed" in n for n in result.notes)
+
+
+class TestCliWithUnusableHome:
+    def test_cli_runs_the_job_when_home_cannot_hold_config(self, tmp_path, monkeypatch):
+        # load_config runs before run_job; it used to raise PermissionError
+        # (or NotADirectoryError) here and the job never started.
+        from typer.testing import CliRunner
+
+        from gpualert.cli import app
+
+        not_a_dir = tmp_path / "file-home"
+        not_a_dir.write_text("")
+        monkeypatch.setenv("HOME", str(not_a_dir))
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: not_a_dir))
+        monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+        monkeypatch.chdir(tmp_path)
+        marker = tmp_path / "ran"
+        out = CliRunner().invoke(
+            app,
+            [
+                "run",
+                "--no-notify",
+                "--",
+                sys.executable,
+                "-c",
+                f"open({str(marker)!r}, 'w').write('x'); raise SystemExit(9)",
+            ],
+        )
+        assert marker.exists(), out.output
+        assert out.exit_code == 9
+
+    @pytest.mark.skipif(
+        os.name != "posix" or os.geteuid() == 0, reason="root ignores permission bits"
+    )
+    def test_cli_runs_the_job_with_a_read_only_home(self, tmp_path, monkeypatch):
+        from typer.testing import CliRunner
+
+        from gpualert.cli import app
+
+        ro = tmp_path / "ro-home"
+        ro.mkdir()
+        ro.chmod(0o500)
+        monkeypatch.setenv("HOME", str(ro))
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: ro))
+        monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+        monkeypatch.chdir(tmp_path)
+        try:
+            out = CliRunner().invoke(
+                app, ["run", "--no-notify", "--", sys.executable, "-c", "raise SystemExit(9)"]
+            )
+            assert out.exit_code == 9, out.output
+        finally:
+            ro.chmod(0o700)

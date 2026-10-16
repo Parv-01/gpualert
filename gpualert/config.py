@@ -159,14 +159,24 @@ def get_config_path() -> Path:
 def load_config() -> GPUAlertConfig:
     """
     Load config. Creates file with defaults if missing.
-    Returns defaults (without crashing) if file is corrupt.
+    Returns defaults (without crashing) if the file is corrupt or the
+    config directory cannot be created or read. Never raises.
 
     In 0.1.4+, silently migrate any plaintext SMTP password out of
     config.toml into the OS keyring (or encrypted fallback file), scrub
     the plaintext from disk, and print a one-line stdout notice.
     """
-    path = get_config_path()
-    if not path.exists():
+    try:
+        path = get_config_path()
+        exists = path.exists()
+    except Exception as e:
+        # A read-only or missing home must not stop the job from running:
+        # the CLI calls this before run_job, so raising here meant the job
+        # never started. Defaults leave email unconfigured, which the
+        # notifier reports plainly.
+        log.warning("Could not open the config directory (%s); using defaults", e)
+        return GPUAlertConfig()
+    if not exists:
         cfg = GPUAlertConfig()
         save_config(cfg)
         return cfg
