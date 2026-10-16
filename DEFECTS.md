@@ -30,6 +30,7 @@ entry says which part is left and where it is planned).
 | D18 | `gpualert slurm` exits 0 for a cancelled, signalled or node-failed job | critical | 0.1.6 kit | fixed in 0.1.6 |
 | D19 | the Slurm poll loop can spin on `sacct` and never reach `--timeout` | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D20 | documented `[artifacts]` and `log_dir` settings are never read | serious | ≤ 0.1.5 | partly fixed in 0.1.6 |
+| D21 | a newline in the command or a file name makes the whole email fail | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
 
@@ -293,3 +294,19 @@ default user gets emailed. `log_dir`: needs a parameter threaded into the
 launcher; `GPUALERT_LOG_DIR` covers the need now. The docs say both are not read.
 
 **Tests.** `tests/test_artifact_scoping.py::TestConfigKnobs`.
+
+## D21 — a newline in the command or a file name fails the whole email
+
+**Symptom.** The subject is built from the command line. Any command that
+contains a newline, which is every multi-line `python -c` script and every
+`bash -c $'...'`, made `EmailMessage` raise `ValueError: Header values may not
+contain linefeed or carriage return characters`. The notifier caught it and
+returned a failure, so the user received nothing about the job. An output file
+with a newline in its name did the same through the attachment's filename.
+Python refuses the header rather than letting it inject a new one, so this was
+lost mail, not header injection.
+
+**Fix (0.1.6).** Subject text is collapsed to one line with control characters
+removed; attachment names have control characters replaced with `_`.
+
+**Tests.** `tests/test_email_headers.py`.

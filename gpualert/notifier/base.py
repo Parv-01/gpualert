@@ -10,11 +10,27 @@ than relying on each backend to remember it.
 from __future__ import annotations
 
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import List
 
 from gpualert.config import GPUAlertConfig
 from gpualert.types import JobResult, NotificationResult
+
+# C0 controls, DEL and C1 controls. Python's email package refuses CR or LF
+# in a header and raises, which used to fail the whole notification for any
+# job started with a multi-line `python -c` script or `bash -c $'...'`.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def header_safe(text: str) -> str:
+    """One line, no control characters: safe for Subject or a filename."""
+    return " ".join(_CONTROL.sub(" ", text or "").split())
+
+
+def filename_safe(name: str) -> str:
+    cleaned = _CONTROL.sub("_", name or "").strip()
+    return cleaned or "attachment"
 
 
 class BaseNotifier(ABC):
@@ -36,9 +52,9 @@ class BaseNotifier(ABC):
     def _build_subject(self, result: JobResult) -> str:
         prefix = self.config.email.subject_prefix
         status = "✅ COMPLETED" if result.is_success() else "❌ FAILED"
-        cmd = result.command
+        cmd = header_safe(result.command)
         cmd_short = cmd if len(cmd) <= 40 else cmd[:40] + "…"
-        return f"{prefix} {status}: {cmd_short}"
+        return header_safe(f"{prefix} {status}: {cmd_short}")
 
     def _build_body(self, result: JobResult, attachments: List[str]) -> str:
         sep = "=" * 60
@@ -83,7 +99,7 @@ class BaseNotifier(ABC):
             lines += [thin, f"ATTACHED FILES ({len(attachments)})", thin]
             for f in attachments:
                 size_kb = os.path.getsize(f) / 1024 if os.path.isfile(f) else 0.0
-                lines.append(f"  - {os.path.basename(f)} ({size_kb:.1f} KB)")
+                lines.append(f"  - {filename_safe(os.path.basename(f))} ({size_kb:.1f} KB)")
             lines.append("")
 
         logs_on_disk = result.log_files()

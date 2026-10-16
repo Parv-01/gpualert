@@ -20,7 +20,7 @@ from email.message import EmailMessage
 from typing import List
 
 from gpualert.config import GPUAlertConfig
-from gpualert.notifier.base import BaseNotifier
+from gpualert.notifier.base import BaseNotifier, filename_safe
 from gpualert.safe_io import UnsafeFileError, open_verified, resolve_roots
 from gpualert.types import JobResult, NotificationResult
 
@@ -127,13 +127,14 @@ class EmailNotifier(BaseNotifier):
                 try:
                     with open_verified(filepath, roots=roots) as f:
                         data = f.read()
+                    name = filename_safe(os.path.basename(filepath))
                     msg.add_attachment(
                         data,
                         maintype="application",
                         subtype="octet-stream",
-                        filename=os.path.basename(filepath),
+                        filename=name,
                     )
-                    attached.append(os.path.basename(filepath))
+                    attached.append(name)
                 except UnsafeFileError as e:
                     skipped.append(f"{filepath} (refused: {e})")
                 except PermissionError:
