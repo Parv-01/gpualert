@@ -105,3 +105,32 @@ class TestRunPassesStatusThrough:
             app, ["run", "--no-notify", "--", sys.executable, "-c", "raise SystemExit(4)"]
         )
         assert res.exit_code == 4
+
+
+class TestReportingCannotChangeTheStatus:
+    """Nothing after the job may change the exit status (I3)."""
+
+    def _run_with(self, target, exc=RuntimeError("boom")):
+        with patch(target, side_effect=exc), patch("gpualert.cli.get_notifier") as nf:
+            nf.return_value.send = _send_ok
+            return runner.invoke(app, ["run", "--", sys.executable, "-c", "raise SystemExit(6)"])
+
+    def test_artifact_scan_failure(self):
+        assert self._run_with("gpualert.cli.find_artifacts").exit_code == 6
+
+    def test_attachment_planning_failure(self):
+        assert (
+            self._run_with("gpualert.cli.prepare_attachments", OSError("vanished")).exit_code == 6
+        )
+
+    def test_result_table_failure(self):
+        assert self._run_with("gpualert.cli._print_result_table").exit_code == 6
+
+    def test_ctrl_c_during_notification(self):
+        assert self._run_with("gpualert.cli.get_notifier", KeyboardInterrupt()).exit_code == 6
+
+    def test_success_stays_zero_when_reporting_fails(self):
+        with patch("gpualert.cli.prepare_attachments", side_effect=RuntimeError("x")):
+            res = runner.invoke(app, ["run", "--", sys.executable, "-c", "pass"])
+        assert res.exit_code == 0
+        assert "Reporting failed" in res.output

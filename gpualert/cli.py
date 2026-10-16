@@ -131,25 +131,60 @@ def run(
     if dry_run:
         config.dry_run = True
 
-    console.print(
-        Panel(
-            f"[bold cyan]GPUAlert[/bold cyan] v{__version__}\n"
-            f"[dim]Command:[/dim] {escape(' '.join(cmd))}\n"
-            f"[dim]Logs   :[/dim] {escape(log_dir_label())}",
-            title="Starting Job",
-            border_style="cyan",
+    # Console output is a convenience. If it fails (stdout closed, a broken
+    # pipe), the job still runs and its status still comes back.
+    _quietly(
+        lambda: console.print(
+            Panel(
+                f"[bold cyan]GPUAlert[/bold cyan] v{__version__}\n"
+                f"[dim]Command:[/dim] {escape(' '.join(cmd))}\n"
+                f"[dim]Logs   :[/dim] {escape(log_dir_label())}",
+                title="Starting Job",
+                border_style="cyan",
+            )
         )
     )
 
-    with console.status("[bold yellow]Running job...[/bold yellow]", spinner="dots"):
+    spinner = _quietly(lambda: console.status("[bold yellow]Running job...[/bold yellow]"))
+    if spinner is not None and _quietly(spinner.__enter__) is None:
+        spinner = None
+    try:
         result = run_job(cmd, timeout=timeout, verbose=verbose)
+    finally:
+        if spinner is not None:
+            _quietly(lambda: spinner.__exit__(None, None, None))
 
+    # Fixed here, before any reporting: nothing after this line may change
+    # it, which is what lets a dead mail server or an odd file name never
+    # look like a failed job.
+    exit_status = _shell_exit_code(result)
+    try:
+        _report_run(result, config, attach, dry_run, no_notify)
+    except (Exception, KeyboardInterrupt) as exc:
+        message = (
+            f"[red]Reporting failed after the job finished "
+            f"({escape(type(exc).__name__)}: {escape(str(exc))}). "
+            "The exit status is the job's own; its logs are on disk.[/red]"
+        )
+        _quietly(lambda: console.print(message))
+    raise typer.Exit(exit_status)
+
+
+def _quietly(fn):
+    try:
+        return fn()
+    except Exception:
+        return None
+
+
+def _report_run(result, config, attach, dry_run: bool, no_notify: bool) -> None:
+    """Everything after the job: tables, artifact scan, notification."""
     _print_result_table(result)
     _print_log_paths(result)
 
     if no_notify:
         console.print("[dim]Notification skipped (--no-notify)[/dim]")
-        raise typer.Exit(_shell_exit_code(result))
+        return
 
     # Honor the attach_artifacts master toggle. When False, skip scanning
     # entirely so no output files are read or attached; logs still flow
@@ -228,8 +263,6 @@ def run(
         console.print(f"\n[red]Notification failed: {escape(note.message)}[/red]")
         console.print("[dim]Logs are still saved locally (see paths above)[/dim]")
 
-    raise typer.Exit(_shell_exit_code(result))
-
 
 # ─── gpualert slurm ──────────────────────────────────────────────────────────
 @app.command()
@@ -272,20 +305,23 @@ def slurm(
         console.print(f"[red]{escape(str(e))}[/red]")
         raise typer.Exit(1)
 
-    _print_log_paths(result)
-
-    attach_files, _ = prepare_attachments(
-        artifacts=[],
-        log_files=result.log_files(),
-        job_failed=result.is_failed(),
-    )
-    note = get_notifier(config, dry_run=dry_run).send(result, attach_files)
-    if note.success:
-        console.print(f"[green]Email: {escape(note.message)}[/green]")
-    else:
-        console.print(f"[red]{escape(note.message)}[/red]")
-
-    raise typer.Exit(_shell_exit_code(result))
+    exit_status = _shell_exit_code(result)
+    try:
+        _print_log_paths(result)
+        attach_files, _ = prepare_attachments(
+            artifacts=[],
+            log_files=result.log_files(),
+            job_failed=result.is_failed(),
+        )
+        note = get_notifier(config, dry_run=dry_run).send(result, attach_files)
+        if note.success:
+            console.print(f"[green]Email: {escape(note.message)}[/green]")
+        else:
+            console.print(f"[red]{escape(note.message)}[/red]")
+    except (Exception, KeyboardInterrupt) as exc:
+        message = f"[red]Reporting failed ({escape(type(exc).__name__)}: {escape(str(exc))}).[/red]"
+        _quietly(lambda: console.print(message))
+    raise typer.Exit(exit_status)
 
 
 # ─── gpualert config ─────────────────────────────────────────────────────────

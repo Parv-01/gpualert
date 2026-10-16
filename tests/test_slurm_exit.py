@@ -125,3 +125,15 @@ def test_slurm_monitor_survives_an_unwritable_home(tmp_path, monkeypatch):
     assert result.is_success()
     assert len(result.log_files()) == 3
     assert any("could not be used" in n for n in result.notes)
+
+
+def test_reporting_failure_keeps_the_slurm_status():
+    row = "FAILED|0:9|00:01:00|train|gpu|n1"
+    with (
+        patch("gpualert.cli.is_slurm_available", return_value=True),
+        patch("gpualert.slurm.is_slurm_available", return_value=True),
+        patch("gpualert.slurm.subprocess.run", return_value=_sacct(row)),
+        patch("gpualert.cli.get_notifier", side_effect=RuntimeError("smtp module broke")),
+    ):
+        res = runner.invoke(app, ["slurm", "4242", "--interval", "1"])
+    assert res.exit_code == 137
