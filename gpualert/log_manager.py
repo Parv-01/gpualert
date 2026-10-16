@@ -20,7 +20,7 @@ import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 LOG_DIR_ENV = "GPUALERT_LOG_DIR"
 
@@ -93,6 +93,50 @@ def get_job_log_paths(log_dir: Path) -> Tuple[str, str, str]:
         str((log_dir / "stderr.log").resolve()),
         str((log_dir / "combined.log").resolve()),
     )
+
+
+def _write_header(paths: Tuple[str, str, str], header: str) -> None:
+    for path in paths:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(header)
+
+
+def open_job_logs(
+    job_id: str,
+    command: str,
+    header: str,
+    create: Optional[Callable[[str, str], Path]] = None,
+    fallback: Optional[Callable[[str], Path]] = None,
+) -> Tuple[Tuple[str, str, str], List[str]]:
+    """Create the three log files and write the header. Never raises.
+
+    Order: the usual directory, then a private temp directory, then memory
+    only (paths returned as ""). A directory that can be created but not
+    written (a home over quota) counts as a failure, which is why the header
+    write is part of each attempt. Each fallback is described in the
+    returned notes, which callers put in the report.
+    """
+    create = create or create_job_log_dir
+    fallback = fallback or create_fallback_log_dir
+    try:
+        paths = get_job_log_paths(create(job_id, command))
+        _write_header(paths, header)
+        return paths, []
+    except Exception as exc:
+        primary = f"{log_dir_label()} ({type(exc).__name__}: {exc})"
+    try:
+        paths = get_job_log_paths(fallback(job_id))
+        _write_header(paths, header)
+        where = os.path.dirname(paths[0])
+        return paths, [
+            f"Log directory {primary} could not be used; this job's logs are in {where}."
+        ]
+    except Exception as exc:
+        return ("", "", ""), [
+            f"Log directory {primary} could not be used, and neither could a temporary "
+            f"directory ({type(exc).__name__}: {exc}). Output was kept in memory only; "
+            "the tails in this report are all that was saved."
+        ]
 
 
 def setup_job_logger(job_id: str, log_dir: Path, verbose: bool = False) -> logging.Logger:

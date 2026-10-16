@@ -110,7 +110,7 @@ class TestFallbackToTemp:
                 raise OSError(errno.EDQUOT, "Disk quota exceeded")
             return real_open(path, mode, *args, **kwargs)
 
-        monkeypatch.setattr(launcher, "open", quota_open, raising=False)
+        monkeypatch.setattr(log_manager, "open", quota_open, raising=False)
         result = run_job(_py("import sys; sys.exit(3)"))
         assert result.exit_code == 3
         assert Path(result.combined_log_path).is_relative_to(private_tmp)

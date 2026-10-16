@@ -21,12 +21,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from gpualert.capture import LogSink, StreamReader, sink_notes, stream_encoding
-from gpualert.log_manager import (
+from gpualert.log_manager import (  # noqa: F401 - get_job_log_paths kept for callers
     create_fallback_log_dir,
     create_job_log_dir,
     get_job_log_paths,
     get_tail,
-    log_dir_label,
+    open_job_logs,
     write_to_log,
 )
 from gpualert.parse_errors import extract_success_metrics, parse_errors
@@ -67,41 +67,17 @@ def _safe_abspath(path: str) -> str:
         return path
 
 
-def _write_header(paths: Tuple[str, str, str], header: str) -> None:
-    for path in paths:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(header)
-
-
 def _open_logs(
     job_id: str, command_str: str, header: str
 ) -> Tuple[Tuple[str, str, str], List[str]]:
-    """Create the three log files and write the header, never raising.
-
-    Order: the usual directory, then a private temp directory, then memory
-    only. A directory that can be created but not written to (a home over
-    quota) counts as a failure, which is why the header write is part of
-    the attempt. Each fallback is disclosed in the returned notes.
-    """
-    try:
-        paths = get_job_log_paths(create_job_log_dir(job_id, command_str))
-        _write_header(paths, header)
-        return paths, []
-    except Exception as exc:
-        primary = f"{log_dir_label()} ({type(exc).__name__}: {exc})"
-    try:
-        paths = get_job_log_paths(create_fallback_log_dir(job_id))
-        _write_header(paths, header)
-        where = os.path.dirname(paths[0])
-        return paths, [
-            f"Log directory {primary} could not be used; this job's logs are in {where}."
-        ]
-    except Exception as exc:
-        return ("", "", ""), [
-            f"Log directory {primary} could not be used, and neither could a temporary "
-            f"directory ({type(exc).__name__}: {exc}). Output was kept in memory only; "
-            "the tails in this report are all that was saved."
-        ]
+    # Looked up here, not bound at import, so tests can patch either step.
+    return open_job_logs(
+        job_id,
+        command_str,
+        header,
+        create=create_job_log_dir,
+        fallback=create_fallback_log_dir,
+    )
 
 
 _NOT_EXECUTABLE = {errno.EACCES, errno.EPERM, errno.ENOEXEC, errno.EISDIR}

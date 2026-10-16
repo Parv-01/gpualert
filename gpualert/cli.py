@@ -97,6 +97,10 @@ def _shell_exit_code(result) -> int:
         return 0 if result.is_success() else 1
     if code < 0:
         return min(128 + (-code), 255)
+    if code == 0 and not result.is_success():
+        # A failed job must never look like success to the calling script.
+        # Slurm reports 0 for NODE_FAIL, PREEMPTED and some cancellations.
+        return 1
     return code if code <= 255 else 1
 
 
@@ -218,7 +222,9 @@ def run(
 @app.command()
 def slurm(
     job_id: int = typer.Argument(..., help="Slurm Job ID to monitor."),
-    interval: int = typer.Option(10, "--interval", "-i", help="Poll interval (s)."),
+    interval: int = typer.Option(
+        10, "--interval", "-i", min=1, help="Poll interval in seconds (at least 1)."
+    ),
     timeout: Optional[int] = typer.Option(None, "--timeout", help="Max wall time (s)."),
     email_to: str = typer.Option("", "--email-to", help="Override recipient."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print, don't send."),

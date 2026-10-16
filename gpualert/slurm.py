@@ -22,8 +22,9 @@ from datetime import datetime
 from typing import Callable, Optional
 
 from gpualert.log_manager import (
+    create_fallback_log_dir,
     create_job_log_dir,
-    get_job_log_paths,
+    open_job_logs,
     write_to_log,
 )
 from gpualert.types import JobResult, SlurmJobInfo
@@ -84,11 +85,25 @@ def _parse_elapsed(elapsed: str) -> float:
 
 
 def _parse_exit_code(field: str) -> int:
-    """Slurm reports ExitCode as 'EXIT:SIGNAL'. Take EXIT."""
+    """Slurm reports ExitCode as 'EXIT:SIGNAL'.
+
+    A non-zero EXIT wins. A job killed by a signal reports '0:N'; that comes
+    back as -N, the same convention Popen uses, so the CLI maps it to 128+N.
+    Reading only the EXIT half turned every signal death into 0, and
+    `gpualert slurm` exited 0 for a cancelled job. SIGNAL values outside the
+    real signal range (Slurm uses 0:125 on some OOM kills) are left as 0;
+    the job state still marks the run failed.
+    """
     if not field:
         return 0
     try:
-        return int(field.split(":")[0])
+        parts = field.split(":")
+        code = int(parts[0])
+        if code == 0 and len(parts) > 1:
+            sig = int(parts[1])
+            if 0 < sig < 65:
+                return -sig
+        return code
     except (ValueError, IndexError):
         return 0
 
@@ -161,9 +176,6 @@ def poll_job(
     start_time = datetime.now()
     command_str = f"slurm_job_{job_id}"
 
-    log_dir = create_job_log_dir(internal_id, command_str)
-    stdout_path, stderr_path, combined_path = get_job_log_paths(log_dir)
-
     header = (
         "=== GPUAlert Slurm Monitor ===\n"
         f"Slurm Job ID : {job_id}\n"
@@ -172,14 +184,18 @@ def poll_job(
         f"Poll interval: {interval}s\n"
         "==============================\n\n"
     )
-    for p in (stdout_path, stderr_path, combined_path):
-        try:
-            with open(p, "w", encoding="utf-8") as f:
-                f.write(header)
-        except OSError:
-            pass
+    (stdout_path, stderr_path, combined_path), log_notes = open_job_logs(
+        internal_id,
+        command_str,
+        header,
+        create=create_job_log_dir,
+        fallback=create_fallback_log_dir,
+    )
 
-    elapsed = 0
+    # Wall-clock time from a monotonic clock. Summing `interval` ignored the
+    # time sacct itself takes and never advanced at interval 0, so a
+    # --timeout could be overshot or never reached.
+    t0 = time.monotonic()
     last_state = "UNKNOWN"
     last_info: Optional[SlurmJobInfo] = None
 
@@ -203,13 +219,12 @@ def poll_job(
 
         if info.state in TERMINAL_STATES:
             break
-        if timeout is not None and elapsed >= timeout:
+        if timeout is not None and time.monotonic() - t0 >= timeout:
             write_to_log(combined_path, "[SYSTEM] Poll timeout reached\n")
             last_state = "POLL_TIMEOUT"
             break
         if interval > 0:
             time.sleep(interval)
-        elapsed += interval
 
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
@@ -237,4 +252,5 @@ def poll_job(
         stderr_log_path=stderr_path,
         combined_log_path=combined_path,
         error_summary=(f"Slurm state: {last_state}" if status != "success" else ""),
+        notes=log_notes,
     )

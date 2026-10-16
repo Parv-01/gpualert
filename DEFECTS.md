@@ -27,6 +27,8 @@ entry says which part is left and where it is planned).
 | D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | fixed in 0.1.6 |
 | D17 | files left out of the email are not named in it | serious | ≤ 0.1.5 | fixed in 0.1.6 |
+| D18 | `gpualert slurm` exits 0 for a cancelled, signalled or node-failed job | critical | 0.1.6 kit | fixed in 0.1.6 |
+| D19 | the Slurm poll loop can spin on `sacct` and never reach `--timeout` | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
 
@@ -102,7 +104,8 @@ never-raises contract. On HPC a full home is normal.
 
 **Tests.** `test_filesystem.py::TestUnwritableHome`, `tests/test_log_fallback.py`.
 
-**Fix (0.1.6).** `$GPUALERT_LOG_DIR` if set, else `~/.gpualert/logs`; if that
+**Fix (0.1.6).** Same path for `gpualert slurm`, whose monitor log had the
+identical problem. `$GPUALERT_LOG_DIR` if set, else `~/.gpualert/logs`; if that
 cannot be created *or written* (the header write is part of the attempt, which
 is what catches a home over quota), a private `mkdtemp` directory; if that
 fails too, memory only, with the stream tails kept for the report. Every
@@ -241,3 +244,32 @@ the CLI turns those and the budget overflow into NOTES lines. Other users'
 files are counted, not named.
 
 **Tests.** `tests/test_artifact_scoping.py::TestCliWiring`.
+
+## D18 — `gpualert slurm` exits 0 for a failed job
+
+**Symptom.** Found while checking the 0.1.6 exit-status change against Slurm's
+own states. `_parse_exit_code` kept only the EXIT half of `EXIT:SIGNAL`, so a job
+killed by a signal (`0:9`, `0:15`) came back as 0. The new `_shell_exit_code`
+passed 0 through, and `gpualert slurm` exited 0 for a cancelled job. The same
+happened for NODE_FAIL and PREEMPTED, which Slurm reports as `0:0`. A script
+that branches on the exit status would treat all of them as success.
+
+**Fix (0.1.6).** `0:N` with N a real signal becomes -N (128+N at the CLI), and a
+job whose status is not success never exits 0: the CLI maps a zero code on a
+failed result to 1.
+
+**Tests.** `tests/test_slurm_exit.py`.
+
+## D19 — Slurm poll loop can spin and miss its timeout
+
+**Symptom.** `poll_job` added `interval` to an elapsed counter instead of
+reading a clock. At `--interval 0` (accepted by the CLI) the counter never moved,
+so `--timeout` was never reached and `sacct` ran in a tight loop against the
+site's Slurm database for as long as the job stayed unknown. Negative intervals
+made it worse. Time spent inside `sacct` (up to 15 s per call) was never counted
+either.
+
+**Fix (0.1.6).** Elapsed time comes from `time.monotonic()`, and the CLI refuses
+an interval below 1 second.
+
+**Tests.** `tests/test_slurm_exit.py`.
