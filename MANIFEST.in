@@ -1,6 +1,7 @@
 include README.md
 include LICENSE
 include CHANGELOG.md
+include CITATION.cff
 include pyproject.toml
 
 recursive-include gpualert *.py
