@@ -257,9 +257,16 @@ def run_job(
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
 
-    # With no log file the in-memory ring is the only record left.
-    stdout_tail = get_tail(stdout_path, 50) if stdout_path else readers[0].tail(50)
-    stderr_tail = get_tail(stderr_path, 50) if stderr_path else readers[1].tail(50)
+    # With no log file, or one that stopped accepting writes (disk full), the
+    # in-memory ring holds the true last lines; the file would give stale ones
+    # and the error class would be read from the wrong part of the output.
+    def tail_of(path: str, reader: StreamReader) -> str:
+        if path and not sink.write_failures.get(reader.log_key):
+            return get_tail(path, 50)
+        return reader.tail(50)
+
+    stdout_tail = tail_of(stdout_path, readers[0])
+    stderr_tail = tail_of(stderr_path, readers[1])
 
     error_summary = ""
     if status != "success":

@@ -167,3 +167,26 @@ def test_cwd_is_recorded_absolute(home, tmp_path):
     work.mkdir()
     result = run_job(_py("pass"), cwd=str(work))
     assert result.cwd == str(work)
+
+
+class TestDiskFullMidRun:
+    def test_tails_come_from_memory_when_the_log_stopped_accepting_writes(self, home, monkeypatch):
+        # Every write to stdout.log fails, as on a full disk. The error is in
+        # the last lines, which never reached the file.
+        from gpualert import capture
+
+        real_write = capture.LogSink.write
+
+        def full_disk(self, pieces):
+            kept = []
+            for key, text in pieces:
+                if key == "stdout":
+                    self._record_failure(key, OSError(28, "No space left on device"))
+                else:
+                    kept.append((key, text))
+            return real_write(self, kept)
+
+        monkeypatch.setattr(capture.LogSink, "write", full_disk)
+        result = run_job(_py("print('early'); print('RuntimeError: CUDA error: late')"))
+        assert "CUDA error: late" in result.stdout_tail
+        assert any("stdout.log failed" in n for n in result.notes)
