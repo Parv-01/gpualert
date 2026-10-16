@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use GPUAlert in your work, please cite the paper below."
+title: "GPUAlert"
+abstract: >-
+  GPUAlert is a command-line wrapper for GPU and Slurm training jobs. It runs
+  an unmodified command, keeps durable logs, classifies why the job failed
+  (CUDA out of memory, NCCL errors, segfaults, OOM killer, missing modules and
+  others) and emails the result with logs and artifacts attached. No code
+  changes to the training script are needed.
+type: software
+authors:
+  - family-names: Agarwal
+    given-names: Parv
+    affiliation: "Indian Institute of Technology Patna"
+  - family-names: Ekbal
+    given-names: Asif
+    affiliation: "Indian Institute of Technology Patna"
+repository-code: "https://github.com/Parv-01/gpualert"
+url: "https://pypi.org/project/gpualert/"
+license: MIT
+version: "0.1.6"
+keywords:
+  - GPU
+  - Slurm
+  - HPC
+  - deep learning
+  - training job failure
+  - failure diagnosis
+  - log classification
+  - CUDA out of memory
+  - NCCL
+  - job monitoring
+  - email notification
+  - MLOps
+preferred-citation:
+  type: article
+  title: "GPUAlert: A Zero-Instrumentation Process-Boundary Monitor for Diagnosing GPU Training-Job Failures"
+  authors:
+    - family-names: Agarwal
+      given-names: Parv
+    - family-names: Ekbal
+      given-names: Asif
+  year: 2026
+  journal: "arXiv preprint"
+  identifiers:
+    - type: other
+      value: "arXiv:2607.01409"
+  url: "https://arxiv.org/abs/2607.01409"

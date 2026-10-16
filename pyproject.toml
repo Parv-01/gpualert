@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gpualert"
 version = "0.1.5"
-description = "CLI tool for GPU/Slurm job notifications with automatic log and artifact delivery"
+description = "Find out why your GPU or Slurm training job failed: zero-code wrapper that classifies the failure and emails logs and artifacts"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 authors = [{name = "Parv", email = "parv.nlpiitp@gmail.com"}]
-keywords = ["gpu", "slurm", "hpc", "notifications", "email", "machine-learning"]
+keywords = ["gpu", "slurm", "hpc", "cuda", "pytorch", "deep-learning", "machine-learning", "training-failure", "failure-diagnosis", "cuda-oom", "nccl", "job-monitoring", "notifications", "email", "mlops"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -56,6 +56,8 @@ gpualert = "gpualert.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/Parv-01/gpualert"
+Paper = "https://arxiv.org/abs/2607.01409"
+Evaluation = "https://github.com/Parv-01/gpualert-eval"
 Repository = "https://github.com/Parv-01/gpualert"
 Issues = "https://github.com/Parv-01/gpualert/issues"
 Documentation = "https://github.com/Parv-01/gpualert/blob/main/docs/index.md"

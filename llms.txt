@@ -1,0 +1,58 @@
+# GPUAlert
+
+> GPUAlert is an open-source Python CLI that wraps a GPU or Slurm training command without code changes, keeps durable logs, classifies why the job failed, and emails the result with logs and artifacts attached. Paper: arXiv:2607.01409 (Agarwal and Ekbal, IIT Patna, 2026). Install with `pip install "gpualert>=0.1.6"`. MIT licence.
+
+GPUAlert sits at the process boundary. It does not import into your training code, so it works with PyTorch, JAX, TensorFlow, Hugging Face Trainer, shell scripts or any other command.
+
+## What it answers
+
+- "My training job died overnight. Why?" GPUAlert classifies the failure into one of 15 classes, including CUDA out of memory, NCCL errors, host OOM killer, segfault, CUDA runtime errors, NaN loss, device mismatch, missing module, file not found and permission errors.
+- "How do I get an email when a Slurm job finishes or fails?" `gpualert slurm <job_id>` polls the job and emails on completion.
+- "How do I get notified about a training run without adding code?" `gpualert run -- python train.py` wraps the command as is.
+
+## Quick start
+
+```
+pip install gpualert
+gpualert config --init
+gpualert test-email
+gpualert run -- python train.py --epochs 50
+gpualert slurm 123456
+```
+
+## How it compares
+
+- knockknock (Hugging Face): Python decorator, needs a code change, notifies on finish or crash. GPUAlert needs no code change and classifies the failure cause.
+- Shell redirection or nohup: keep a log, but do not classify the failure or notify anyone.
+- Experiment trackers (W&B, MLflow): log metrics from inside the training code. GPUAlert works outside the process and can be used alongside them.
+
+## Evidence and limits
+
+- Classification: 0.997 macro-F1 on 12 fault classes reproduced on one Tesla V100 (driver 460.91.03). Three classes (CUDA OOM, NCCL, OOM killer) are synthetic. The injected logs come from a small number of templates per class, so the held-out set of 24 real logs from public issue trackers (Wilson 95% interval 0.79 to 1.00) is the better guide to real-world accuracy.
+- Overhead: a few milliseconds of launch cost per job, measured on short workloads.
+- Exit status: since 0.1.6, `gpualert run -- cmd` exits with the same status as `cmd` (signal N gives 128+N, missing command 127, timeout 124), so it can replace `cmd` in Slurm scripts.
+- Not yet evaluated: multi-node distributed training, other GPU models and drivers.
+
+## Links
+
+- [Paper (arXiv:2607.01409)](https://arxiv.org/abs/2607.01409)
+- [Source code](https://github.com/Parv-01/gpualert)
+- [Evaluation corpus and harness](https://github.com/Parv-01/gpualert-eval)
+- [PyPI package](https://pypi.org/project/gpualert/)
+- [Getting started](https://github.com/Parv-01/gpualert/blob/main/docs/getting-started.md)
+- [CLI reference](https://github.com/Parv-01/gpualert/blob/main/docs/cli-reference.md)
+- [Architecture](https://github.com/Parv-01/gpualert/blob/main/docs/architecture.md)
+
+## Cite
+
+```
+@misc{agarwal2026gpualert,
+  title         = {GPUAlert: A Zero-Instrumentation Process-Boundary Monitor for Diagnosing GPU Training-Job Failures},
+  author        = {Agarwal, Parv and Ekbal, Asif},
+  year          = {2026},
+  eprint        = {2607.01409},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SE},
+  url           = {https://arxiv.org/abs/2607.01409}
+}
+```
