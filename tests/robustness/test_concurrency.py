@@ -23,8 +23,10 @@ pytestmark = pytest.mark.robustness
 class TestArtifactScoping:
     @pytest.mark.xfail(
         strict=True,
-        reason="D4: find_artifacts matches anything in cwd newer than the start "
-        "time, so a co-tenant's output is attached to this job's email",
+        reason="D4 (same-user part): two of one user's jobs writing into one "
+        "directory cannot be told apart without knowing which process created "
+        "each file; planned with the process-tree work in 0.2.5. Other users' "
+        "files are excluded since 0.1.6",
     )
     def test_a_job_does_not_attach_another_jobs_output(self, isolated_home, workdir):
         job_a_start = datetime.now()
@@ -39,8 +41,9 @@ class TestArtifactScoping:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="D4: pre-existing files touched by an unrelated process during the "
-        "run are indistinguishable from this job's own output",
+        reason="D4 (same-user part): a pre-existing file rewritten during the run "
+        "looks exactly like the job rewriting its own results.csv; needs "
+        "creator attribution, planned for 0.2.5",
     )
     def test_a_file_merely_touched_during_the_run_is_not_claimed(self, isolated_home, workdir):
         stale = workdir / "someone_elses_results.csv"

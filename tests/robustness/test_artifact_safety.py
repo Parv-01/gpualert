@@ -38,11 +38,6 @@ def _just_before_now() -> datetime:
 
 
 class TestOwnership:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D4: files owned by another uid are attached, so a co-tenant's "
-        "output in a shared directory is emailed to this user",
-    )
     def test_file_owned_by_another_user_is_not_attached(self, workdir):
         start = _just_before_now()
         (workdir / "results.json").write_text("{}")
@@ -54,7 +49,6 @@ class TestOwnership:
     @pytest.mark.skipif(
         not hasattr(os, "geteuid") or os.geteuid() != 0, reason="needs root to chown"
     )
-    @pytest.mark.xfail(strict=True, reason="D4: same defect, with a real second uid")
     def test_real_chown_to_another_uid_is_not_attached(self, workdir):
         start = _just_before_now()
         theirs = workdir / "their_metrics.csv"
@@ -68,11 +62,6 @@ class TestOwnership:
 
 
 class TestRunWindow:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D4: there is no upper bound on mtime, so a file written after the "
-        "job ended is claimed by it",
-    )
     def test_file_written_after_the_job_ended_is_not_attached(self, workdir):
         start = datetime.now() - timedelta(seconds=30)
         end = datetime.now() - timedelta(seconds=20)
@@ -83,11 +72,6 @@ class TestRunWindow:
 
 
 class TestFileTypes:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D11: a FIFO named like an output passes the scan and later blocks "
-        "the metrics reader forever, so the notification is never sent",
-    )
     def test_fifo_named_like_an_output_is_ignored(self, workdir):
         start = _just_before_now()
         os.mkfifo(workdir / "metrics.json")
@@ -96,11 +80,6 @@ class TestFileTypes:
 
 
 class TestToolState:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D14: a job started from $HOME attaches ~/.gpualert/logs, which "
-        "holds every other job's logs",
-    )
     def test_gpualert_state_is_never_scanned(self, isolated_home, monkeypatch):
         monkeypatch.chdir(isolated_home)
         start = _just_before_now()
@@ -110,11 +89,6 @@ class TestToolState:
         found = find_artifacts(start, cwd=str(isolated_home))
         assert not any(".gpualert" in a.path for a in found)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D14: hidden directories (.ssh, .aws, .config) are scanned like "
-        "any other output directory",
-    )
     def test_hidden_directories_are_not_scanned(self, workdir):
         start = _just_before_now()
         (workdir / ".secrets").mkdir()

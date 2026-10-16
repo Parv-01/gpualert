@@ -13,19 +13,20 @@ entry says which part is left and where it is planned).
 | D1 | a non-UTF-8 byte silently discards all following output | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D2 | SIGTERM / SIGHUP unhandled: no result, no footer, no notification | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D3 | only the direct child is killed; launcher workers are orphaned | critical | ≤ 0.1.5 | open, planned 0.2.0 |
-| D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | open |
+| D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | partly fixed in 0.1.6 |
 | D5 | `run_job` raises when the log directory cannot be created | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D6 | `get_tail()` loads the whole file into memory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D7 | no log rotation or size cap | serious | ≤ 0.1.5 | open, planned 0.2.0 |
 | D8 | no GPU awareness | serious | ≤ 0.1.5 | open, planned 0.3.0 |
 | D9 | no cross-job registry | serious | ≤ 0.1.5 | open, planned 0.4.0 |
 | D10 | timeout sends SIGKILL with no SIGTERM first | serious | ≤ 0.1.5 | open, planned 0.2.0 |
-| D11 | a FIFO named like an output hangs the wrapper after the job | serious | ≤ 0.1.5 | open |
+| D11 | a FIFO named like an output hangs the wrapper after the job | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | fixed in 0.1.6 |
 | D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
-| D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | open |
+| D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | open |
 | D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | open |
+| D17 | files left out of the email are not named in it | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 
 ---
 
@@ -77,7 +78,21 @@ directory that attaches, and emails, a co-tenant's outputs.
 **Measured.** Job A attached `jobB_other_user_results.json`.
 
 **Tests.** `test_concurrency.py::TestArtifactScoping`,
-`test_artifact_safety.py::TestOwnership`, `TestRunWindow`.
+`test_artifact_safety.py::TestOwnership`, `TestRunWindow`, `tests/test_artifact_scoping.py`.
+
+**Fixed in 0.1.6 (the cross-user part).** A file qualifies only if it is owned
+by the user running the wrapper, sits inside the job's launch directory
+(recorded at launch, not re-read later), and was modified inside the run window
+(start to end plus 2 s for coarse timestamps). Files owned by someone else are
+counted in the report, never named.
+
+**Still open (the same-user part).** Two of one user's jobs writing into one
+directory, or a pre-existing file rewritten during the run, look identical to
+the job's own output. Telling them apart needs to know which process created
+each file. `inotify` cannot say (it carries no pid), `fanotify` needs root, and
+`LD_PRELOAD` does not work on static binaries, so this waits for the
+process-tree work in 0.2.5. The two strict xfails in `test_concurrency.py` pin
+it. Until then, give concurrent jobs their own directories.
 
 ## D5 — `run_job` raises when the log directory cannot be created
 
@@ -137,7 +152,11 @@ notification is never sent and the wrapper never exits.
 **Reproduction.** `os.mkfifo("metrics.json")` in the run directory; the
 metrics reader is still blocked after 3 s.
 
-**Tests.** `test_artifact_safety.py::TestFileTypes`.
+**Tests.** `test_artifact_safety.py::TestFileTypes`, `tests/test_artifact_scoping.py`
+(including an end-to-end CLI run with a FIFO in the directory, under a timeout).
+
+**Fix (0.1.6).** Only regular files qualify (`S_ISREG` after following an
+in-tree link). Pipes, sockets and devices are listed in the report.
 
 ## D12 — non-executable command reported as a launcher error
 
@@ -172,7 +191,10 @@ deep and attaches every log written during the run, including other jobs'.
 Hidden directories such as `.ssh`, `.aws` and `.config` are scanned like any
 other.
 
-**Tests.** `test_artifact_safety.py::TestToolState`.
+**Tests.** `test_artifact_safety.py::TestToolState`, `tests/test_artifact_scoping.py::TestHidden`.
+
+**Fix (0.1.6).** Hidden directories are never entered. Hidden files are only
+considered when a pattern itself starts with a dot (`--attach '.results*'`).
 
 ## D15 — attachments re-opened by path at send time
 
@@ -191,3 +213,17 @@ artifact (`*.zip` is a default pattern). Found because the harness left the zip
 in the repo root.
 
 **Tests.** `test_contracts.py::TestNonSilentBudget::test_overflow_zip_is_never_written_into_the_working_directory`.
+
+## D17 — files left out of the email are not named in it
+
+**Symptom.** The paper's third primitive is the non-silent budget: anything not
+attached is listed. `prepare_attachments` does return the list, but `cli.run`
+discarded it, and `find_artifacts` dropped files over the per-file limit
+without recording them at all. The email named only what was attached, so an
+over-limit checkpoint simply vanished from the report.
+
+**Fix (0.1.6).** The scan records every pattern match it leaves out, by reason;
+the CLI turns those and the budget overflow into NOTES lines. Other users'
+files are counted, not named.
+
+**Tests.** `tests/test_artifact_scoping.py::TestCliWiring`.

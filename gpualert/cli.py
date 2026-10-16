@@ -11,6 +11,7 @@ Every command that runs or monitors a job is responsible for:
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
 import typer
@@ -19,7 +20,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from gpualert import __version__
-from gpualert.artifacts import find_artifacts, prepare_attachments
+from gpualert.artifacts import describe_skipped, find_artifacts, prepare_attachments
 from gpualert.config import (
     GPUAlertConfig,
     get_config_path,
@@ -69,6 +70,13 @@ def _print_result_table(result) -> None:
 
 
 # ─── gpualert run ────────────────────────────────────────────────────────────
+
+
+def _cwd_or_empty() -> str:
+    try:
+        return os.getcwd()
+    except OSError:
+        return ""
 
 
 def _shell_exit_code(result) -> int:
@@ -135,10 +143,22 @@ def run(
     # through prepare_attachments per attach_logs_on_success. An explicit
     # NOTES line is added to the email body so the recipient never has to
     # guess why no artifacts were sent.
-    if config.artifacts.attach_artifacts:
+    scan_root = result.cwd or _cwd_or_empty()
+    if config.artifacts.attach_artifacts and scan_root:
+        excluded: dict = {}
         artifact_list = find_artifacts(
             start_time=result.start_time,
+            cwd=scan_root,
             patterns=attach if attach else None,
+            end_time=result.end_time,
+            skipped=excluded,
+        )
+        result.notes.extend(describe_skipped(excluded))
+    elif config.artifacts.attach_artifacts:
+        artifact_list = []
+        result.notes.append(
+            "The job's working directory could not be determined, so no output files "
+            "were scanned. Logs are still attached."
         )
     else:
         artifact_list = []
@@ -151,12 +171,16 @@ def run(
             "(artifacts.attach_artifacts=false)[/dim]"
         )
 
-    attach_files, _skipped = prepare_attachments(
+    attach_files, over_budget = prepare_attachments(
         artifacts=artifact_list,
         log_files=result.log_files(),
         job_failed=result.is_failed(),
         attach_logs=config.email.attach_logs_on_success,
     )
+    if over_budget:
+        names = [os.path.basename(p) for p in over_budget if p]
+        shown = ", ".join(names[:10]) + (f" and {len(names) - 10} more" if len(names) > 10 else "")
+        result.notes.append(f"Not attached, over the email size budget: {shown}.")
     if artifact_list:
         console.print(f"\n[dim]Artifacts found: {len(artifact_list)}[/dim]")
 
