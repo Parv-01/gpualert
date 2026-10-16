@@ -89,3 +89,33 @@ def test_cli_exits_126_for_a_non_executable_file(tmp_path):
     script.chmod(0o644)
     out = CliRunner().invoke(app, ["run", "--no-notify", "--", str(script)])
     assert out.exit_code == 126
+
+
+@posix
+def test_wrapper_failure_after_start_does_not_leave_the_child_running(monkeypatch, tmp_path):
+    # If something in the wrapper breaks after Popen succeeded (here: thread
+    # creation), the child must be stopped rather than left running
+    # unwatched with pipes nobody reads.
+    import threading as _threading
+
+    import psutil
+
+    started = {}
+    real_popen = __import__("subprocess").Popen
+
+    def spy(*a, **k):
+        p = real_popen(*a, **k)
+        started["pid"] = p.pid
+        return p
+
+    def boom(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("gpualert.launcher.subprocess.Popen", spy)
+    monkeypatch.setattr(_threading.Thread, "start", boom)
+    result = run_job([sys.executable, "-c", "import time; time.sleep(60)"])
+    assert result.exit_code == -99
+    assert "can't start new thread" in _combined(result)
+    assert not psutil.pid_exists(started["pid"]) or (
+        psutil.Process(started["pid"]).status() == psutil.STATUS_ZOMBIE
+    )

@@ -16,6 +16,7 @@ import errno
 import os
 import subprocess
 import threading
+import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -156,8 +157,23 @@ def run_job(
     threads: List[threading.Thread] = []
 
     def join_readers(timeout_s: float) -> None:
+        # One deadline for both readers, so two held pipes cost timeout_s,
+        # not twice that.
+        deadline = time.monotonic() + timeout_s
         for t in threads:
-            t.join(timeout=timeout_s)
+            t.join(timeout=max(0.0, deadline - time.monotonic()))
+
+    def stop_child() -> None:
+        # Used when the wrapper itself fails after the child started. Left
+        # alone, the child would run unwatched and block once its pipes fill.
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        join_readers(2)
 
     # ── STEP 3: Start the process ──────────────────────────────────────────
     try:
@@ -206,12 +222,17 @@ def run_job(
             )
 
     except OSError as e:
-        # Exec failures, mapped to what a shell reports for the same command
-        # so `gpualert run -- cmd` keeps cmd's exit status: 127 when the
-        # program (or its #! interpreter) is missing, 126 when it exists but
-        # cannot be executed.
         status = "failed"
-        exit_code, msg = _exec_failure(e, cmd, cwd)
+        if proc is None:
+            # Exec failures, mapped to what a shell reports for the same
+            # command so `gpualert run -- cmd` keeps cmd's exit status: 127
+            # when the program (or its #! interpreter) is missing, 126 when it
+            # exists but cannot be executed.
+            exit_code, msg = _exec_failure(e, cmd, cwd)
+        else:
+            stop_child()
+            exit_code = -99
+            msg = f"[SYSTEM] Unexpected launcher error: {type(e).__name__}: {e}\n"
         for path in (stdout_path, stderr_path, combined_path):
             write_to_log(path, msg, lock)
 
@@ -227,6 +248,7 @@ def run_job(
         write_to_log(combined_path, "\n[SYSTEM] Interrupted by user (Ctrl+C)\n", lock)
 
     except Exception as e:
+        stop_child()
         status = "failed"
         exit_code = -99
         msg = f"[SYSTEM] Unexpected launcher error: {type(e).__name__}: {e}\n"
