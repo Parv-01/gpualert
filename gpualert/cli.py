@@ -68,6 +68,27 @@ def _print_result_table(result) -> None:
 
 
 # ─── gpualert run ────────────────────────────────────────────────────────────
+
+def _shell_exit_code(result) -> int:
+    """Map a JobResult to the exit status a shell or Slurm script expects.
+
+    The wrapped job's own code is passed through so `gpualert run -- cmd`
+    can replace `cmd` in pipelines. Killed by signal N gives 128+N, timeout
+    gives 124 (as GNU timeout does), Ctrl+C gives 130, and an internal
+    launcher error gives 1. Notification failures never change this value.
+    """
+    if result.status == "timeout":
+        return 124
+    if result.status == "interrupted":
+        return 130
+    code = result.exit_code
+    if code is None or code == -99:
+        return 0 if result.is_success() else 1
+    if code < 0:
+        return min(128 + (-code), 255)
+    return code if code <= 255 else 1
+
+
 @app.command()
 def run(
     cmd: List[str] = typer.Argument(..., help="Command to run."),
@@ -105,7 +126,7 @@ def run(
 
     if no_notify:
         console.print("[dim]Notification skipped (--no-notify)[/dim]")
-        raise typer.Exit(0 if result.is_success() else 1)
+        raise typer.Exit(_shell_exit_code(result))
 
     # Honor the attach_artifacts master toggle. When False, skip scanning
     # entirely so no output files are read or attached; logs still flow
@@ -160,7 +181,7 @@ def run(
         console.print(f"\n[red]Notification failed: {note.message}[/red]")
         console.print("[dim]Logs are still saved locally (see paths above)[/dim]")
 
-    raise typer.Exit(0 if result.is_success() else 1)
+    raise typer.Exit(_shell_exit_code(result))
 
 
 # ─── gpualert slurm ──────────────────────────────────────────────────────────
@@ -215,7 +236,7 @@ def slurm(
     else:
         console.print(f"[red]{note.message}[/red]")
 
-    raise typer.Exit(0 if result.is_success() else 1)
+    raise typer.Exit(_shell_exit_code(result))
 
 
 # ─── gpualert config ─────────────────────────────────────────────────────────

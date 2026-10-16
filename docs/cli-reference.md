@@ -1,8 +1,19 @@
 # CLI Reference
 
 Run `gpualert --help` for the top-level menu, or `gpualert <command> --help` for any subcommand.
-Exit codes follow the wrapped job: `gpualert run -- ...` exits 0 on success, non-zero on failure.
-Notifier failures do not change the exit code.
+Exit codes follow the wrapped job, so `gpualert run -- cmd` can replace `cmd` in Slurm
+scripts and pipelines (0.1.6+; earlier versions exited 1 for every failure):
+
+| What happened | `gpualert run` exits with |
+|---|---|
+| Job exited with status N | N |
+| Job killed by signal N | 128 + N (SIGKILL 137, SIGSEGV 139) |
+| Command not found | 127 |
+| `--timeout` reached | 124 |
+| Ctrl+C | 130 |
+| Internal launcher error | 1 |
+
+Notifier failures do not change the exit code. `gpualert slurm` uses the same mapping.
 
 ## `gpualert run`
 
