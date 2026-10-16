@@ -10,7 +10,7 @@ entry says which part is left and where it is planned).
 
 | Id | Summary | Severity | Affects | Status |
 |---|---|---|---|---|
-| D1 | a non-UTF-8 byte silently discards all following output | critical | ≤ 0.1.5 | open |
+| D1 | a non-UTF-8 byte silently discards all following output | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D2 | SIGTERM / SIGHUP unhandled: no result, no footer, no notification | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D3 | only the direct child is killed; launcher workers are orphaned | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | open |
@@ -43,7 +43,15 @@ swallows it, and the thread exits. Status depends only on the exit code.
 **Reproduction.** `faults.emits_invalid_utf8()`: `BEFORE` survives, `AFTER 4`
 does not.
 
-**Tests.** `test_output_shapes.py::TestInvalidUTF8`.
+**Tests.** `test_output_shapes.py::TestInvalidUTF8`, `tests/test_capture.py`.
+
+**Fix (0.1.6).** `gpualert/capture.py`: pipes are read as bytes and decoded
+incrementally with a counting replacement handler, so no byte sequence can stop
+the stream and each replacement is reported in the result notes and the log
+footer. A reader that fails for any other reason records why and keeps
+draining its pipe so the child cannot block. Measured side effect: capture is
+5–7× faster on chatty jobs (200k short lines: 5.9 s → 1.1 s; 32 MB: 24.8 s →
+3.5 s), because the log files are opened once instead of once per line.
 
 ## D2 — SIGTERM / SIGHUP unhandled
 

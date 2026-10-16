@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from gpualert.capture import LogSink, StreamReader, sink_notes, stream_encoding
 from gpualert.log_manager import (
     create_job_log_dir,
     get_job_log_paths,
@@ -27,6 +28,11 @@ from gpualert.log_manager import (
 )
 from gpualert.parse_errors import extract_success_metrics, parse_errors
 from gpualert.types import JobResult
+
+# How long to wait for the reader threads after the child exits. They finish
+# as soon as the pipes reach EOF, which is immediate unless a grandchild
+# inherited them.
+_READER_JOIN_S = 5.0
 
 
 def _format_duration(seconds: float) -> str:
@@ -89,17 +95,31 @@ def run_job(
     status = "failed"
     exit_code: Optional[int] = None
 
+    sink = LogSink({"stdout": stdout_path, "stderr": stderr_path, "combined": combined_path}, lock)
+    encoding = stream_encoding()
+    echo = (lambda text: print(text, end="", flush=True)) if verbose else None
+    readers = [
+        StreamReader("stdout", "OUT", "stdout", sink, encoding, echo),
+        StreamReader("stderr", "ERR", "stderr", sink, encoding, echo),
+    ]
+    threads: List[threading.Thread] = []
+
+    def join_readers(timeout_s: float) -> None:
+        for t in threads:
+            t.join(timeout=timeout_s)
+
     # ── STEP 3: Start the process ──────────────────────────────────────────
     try:
+        # Binary pipes, unbuffered: StreamReader decodes, and a raw read
+        # returns as soon as any bytes are available instead of waiting to
+        # fill a buffer.
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
             cwd=cwd,
             env=env,
-            bufsize=1,
-            universal_newlines=True,
+            bufsize=0,
         )
         write_to_log(
             combined_path,
@@ -108,37 +128,15 @@ def run_job(
         )
 
         # ── STEP 4: Stream output in real-time ──────────────────────────────
-        def reader_thread(pipe, log_path: str, prefix: str) -> None:
-            try:
-                for line in iter(pipe.readline, ""):
-                    stamp = datetime.now().strftime("%H:%M:%S")
-                    timestamped = f"[{stamp}] {line}"
-                    write_to_log(log_path, timestamped, lock)
-                    write_to_log(combined_path, f"[{prefix}] {timestamped}", lock)
-                    if verbose:
-                        print(f"  {prefix} | {line}", end="", flush=True)
-            except Exception:
-                pass
-            finally:
-                try:
-                    pipe.close()
-                except Exception:
-                    pass
-
-        t_out = threading.Thread(
-            target=reader_thread, args=(proc.stdout, stdout_path, "OUT"), daemon=True
-        )
-        t_err = threading.Thread(
-            target=reader_thread, args=(proc.stderr, stderr_path, "ERR"), daemon=True
-        )
-        t_out.start()
-        t_err.start()
+        for reader, pipe in zip(readers, (proc.stdout, proc.stderr)):
+            t = threading.Thread(target=reader.run, args=(pipe,), daemon=True)
+            t.start()
+            threads.append(t)
 
         # ── STEP 5: Wait for process (with optional timeout) ────────────────
         try:
             proc.wait(timeout=timeout)
-            t_out.join(timeout=5)
-            t_err.join(timeout=5)
+            join_readers(_READER_JOIN_S)
             exit_code = proc.returncode
             status = "success" if exit_code == 0 else "failed"
         except subprocess.TimeoutExpired:
@@ -147,8 +145,7 @@ def run_job(
                 proc.wait(timeout=5)
             except Exception:
                 pass
-            t_out.join(timeout=5)
-            t_err.join(timeout=5)
+            join_readers(_READER_JOIN_S)
             exit_code = -1
             status = "timeout"
             write_to_log(
@@ -162,7 +159,7 @@ def run_job(
         exit_code = 127
         msg = f"[SYSTEM] ERROR: Command not found: {cmd[0] if cmd else '?'}\n"
         for path in (stdout_path, stderr_path, combined_path):
-            write_to_log(path, msg)
+            write_to_log(path, msg, lock)
 
     except KeyboardInterrupt:
         if proc is not None:
@@ -170,6 +167,7 @@ def run_job(
                 proc.kill()
             except Exception:
                 pass
+            join_readers(2)
         status = "interrupted"
         exit_code = -2
         write_to_log(combined_path, "\n[SYSTEM] Interrupted by user (Ctrl+C)\n", lock)
@@ -179,7 +177,27 @@ def run_job(
         exit_code = -99
         msg = f"[SYSTEM] Unexpected launcher error: {type(e).__name__}: {e}\n"
         for path in (stdout_path, stderr_path, combined_path):
-            write_to_log(path, msg)
+            write_to_log(path, msg, lock)
+
+    # A pipe still open here means a background process inherited it and
+    # outlived the job. Stop logging it: anything after the footer would be
+    # misread as part of this job.
+    still_open = [r.name for r, t in zip(readers, threads) if t.is_alive()]
+    sink.close()
+
+    notes: List[str] = []
+    for reader in readers:
+        notes.extend(reader.notes())
+    notes.extend(
+        sink_notes(
+            sink, {"stdout": "stdout.log", "stderr": "stderr.log", "combined": "combined.log"}
+        )
+    )
+    if still_open:
+        notes.append(
+            f"{' and '.join(still_open)} stayed open after the job exited, held by a "
+            "background process it started; output after that point is not in the logs."
+        )
 
     # ── STEP 6: Finalize JobResult ─────────────────────────────────────────
     end_time = datetime.now()
@@ -204,6 +222,8 @@ def run_job(
     ]
     if error_summary:
         footer_lines.append(f"Error    : {error_summary.splitlines()[0]}")
+    for note in notes:
+        footer_lines.append(f"Note     : {note}")
     write_to_log(combined_path, "\n".join(footer_lines) + "\n", lock)
 
     result.end_time = end_time
@@ -213,4 +233,5 @@ def run_job(
     result.stdout_tail = stdout_tail
     result.stderr_tail = stderr_tail
     result.error_summary = error_summary if error_summary else success_metrics
+    result.notes.extend(notes)
     return result

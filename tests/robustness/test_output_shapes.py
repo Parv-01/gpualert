@@ -20,11 +20,6 @@ pytestmark = pytest.mark.robustness
 
 
 class TestInvalidUTF8:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D1: the reader thread swallows UnicodeDecodeError, so every line "
-        "after a non-UTF8 byte is discarded",
-    )
     def test_output_after_a_bad_byte_is_still_captured(self, isolated_home, workdir):
         result = run_job(faults.emits_invalid_utf8())
         body = probes.log_text(result.stdout_log_path)
@@ -35,11 +30,6 @@ class TestInvalidUTF8:
         result = run_job(faults.emits_invalid_utf8())
         assert "BEFORE" in probes.log_text(result.stdout_log_path)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D1: losing the stream silently reports success; a truncated log "
-        "should be disclosed in the result",
-    )
     def test_truncation_is_disclosed(self, isolated_home, workdir):
         result = run_job(faults.emits_invalid_utf8())
         disclosed = any("decode" in n.lower() or "truncat" in n.lower() for n in result.notes)
