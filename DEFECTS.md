@@ -21,7 +21,7 @@ entry says which part is left and where it is planned).
 | D9 | no cross-job registry | serious | ≤ 0.1.5 | open, planned 0.4.0 |
 | D10 | timeout sends SIGKILL with no SIGTERM first | serious | ≤ 0.1.5 | open, planned 0.2.0 |
 | D11 | a FIFO named like an output hangs the wrapper after the job | serious | ≤ 0.1.5 | open |
-| D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | open |
+| D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | fixed in 0.1.6 |
 | D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | open |
 | D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | open |
@@ -145,7 +145,13 @@ metrics reader is still blocked after 3 s.
 "Unexpected launcher error: PermissionError" with exit code −99, which the CLI
 maps to 1. A shell reports 126 for the same command.
 
-**Tests.** `test_contracts.py::TestExitCodeFidelity::test_a_non_executable_command_reports_126`.
+**Tests.** `test_contracts.py::TestExitCodeFidelity::test_a_non_executable_command_reports_126`,
+`tests/test_exec_errors.py`.
+
+**Fix (0.1.6).** Exec failures map to the shell's codes: 126 for EACCES,
+EPERM, ENOEXEC and EISDIR, 127 for a missing program or a missing `#!`
+interpreter, each with a message that names the actual cause. A missing
+working directory stays a launcher error (exit 1).
 
 ## D13 — `run_job` raises from a deleted working directory
 

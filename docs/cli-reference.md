@@ -8,7 +8,8 @@ scripts and pipelines (0.1.6+; earlier versions exited 1 for every failure):
 |---|---|
 | Job exited with status N | N |
 | Job killed by signal N | 128 + N (SIGKILL 137, SIGSEGV 139) |
-| Command not found | 127 |
+| Command not found, or its `#!` interpreter is missing | 127 |
+| Command found but not executable (no execute bit, a directory, no `#!` line) | 126 |
 | `--timeout` reached | 124 |
 | Ctrl+C | 130 |
 | Internal launcher error | 1 |

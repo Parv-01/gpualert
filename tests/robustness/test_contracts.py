@@ -103,11 +103,6 @@ class TestExitCodeFidelity:
         assert result.exit_code is not None and result.exit_code < 0
 
     @pytest.mark.skipif(os.name != "posix", reason="POSIX exec permissions")
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D12: exec of a file without the execute bit falls into the "
-        "generic launcher-error path (-99, exit 1) instead of the shell's 126",
-    )
     def test_a_non_executable_command_reports_126(self, isolated_home, workdir):
         script = workdir / "train.sh"
         script.write_text("#!/bin/sh\necho hi\n")

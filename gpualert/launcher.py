@@ -12,6 +12,7 @@ and returns a JobResult with is_failed() == True.
 
 from __future__ import annotations
 
+import errno
 import os
 import subprocess
 import threading
@@ -101,6 +102,31 @@ def _open_logs(
             f"directory ({type(exc).__name__}: {exc}). Output was kept in memory only; "
             "the tails in this report are all that was saved."
         ]
+
+
+_NOT_EXECUTABLE = {errno.EACCES, errno.EPERM, errno.ENOEXEC, errno.EISDIR}
+
+
+def _exec_failure(e: OSError, cmd: List[str], cwd: Optional[str]) -> Tuple[int, str]:
+    """Exit code and [SYSTEM] line for an OSError raised by Popen."""
+    prog = cmd[0] if cmd else "?"
+    if isinstance(e, FileNotFoundError):
+        if cwd and e.filename is not None and os.fspath(e.filename) == os.fspath(cwd):
+            return -99, f"[SYSTEM] ERROR: Working directory not found: {cwd}\n"
+        if os.path.sep in str(prog) and os.path.isfile(prog):
+            return 127, (
+                f"[SYSTEM] ERROR: Command not found: {prog} exists, but its #! interpreter "
+                "or loader does not\n"
+            )
+        return 127, f"[SYSTEM] ERROR: Command not found: {prog}\n"
+    if e.errno in _NOT_EXECUTABLE:
+        hint = ""
+        if e.errno == errno.ENOEXEC:
+            hint = " (no #! line; run it through its interpreter, e.g. `sh script`)"
+        elif e.errno in (errno.EACCES, errno.EPERM) and os.path.isfile(prog):
+            hint = " (missing execute permission? chmod +x)"
+        return 126, f"[SYSTEM] ERROR: Cannot execute {prog}: {e.strerror}{hint}\n"
+    return -99, f"[SYSTEM] Unexpected launcher error: {type(e).__name__}: {e}\n"
 
 
 def run_job(
@@ -203,10 +229,13 @@ def run_job(
                 lock,
             )
 
-    except FileNotFoundError:
+    except OSError as e:
+        # Exec failures, mapped to what a shell reports for the same command
+        # so `gpualert run -- cmd` keeps cmd's exit status: 127 when the
+        # program (or its #! interpreter) is missing, 126 when it exists but
+        # cannot be executed.
         status = "failed"
-        exit_code = 127
-        msg = f"[SYSTEM] ERROR: Command not found: {cmd[0] if cmd else '?'}\n"
+        exit_code, msg = _exec_failure(e, cmd, cwd)
         for path in (stdout_path, stderr_path, combined_path):
             write_to_log(path, msg, lock)
 
