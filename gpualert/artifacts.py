@@ -103,6 +103,13 @@ def find_artifacts(
             if not _matches_any(fname, patterns):
                 continue
             fp = Path(dirpath) / fname
+            # Never follow a symlink out of the run directory: a link named
+            # results.json could otherwise attach any readable file.
+            if fp.is_symlink():
+                try:
+                    fp.resolve().relative_to(root)
+                except (ValueError, OSError):
+                    continue
             try:
                 st = fp.stat()
             except OSError:
