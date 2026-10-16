@@ -83,6 +83,10 @@ ignore = ["E501"]
 testpaths = ["tests"]
 addopts = "-v --cov=gpualert --cov-report=term-missing"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "robustness: fault-injection and contract tests (tests/robustness)",
+    "slow: takes more than a few seconds; excluded from the quick suite",
+]
 
 [tool.mypy]
 python_version = "3.10"

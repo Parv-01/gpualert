@@ -1,0 +1,162 @@
+# Defect ledger
+
+One entry per known defect. A defect is closed only when its strict-xfail test
+flips to a pass and the marker is deleted in the same commit as the fix. The
+harness that pins them lives in `tests/robustness/`; see its README for the
+convention.
+
+Status values: **open**, **fixed in X.Y.Z**, **partly fixed in X.Y.Z** (the
+entry says which part is left and where it is planned).
+
+| Id | Summary | Severity | Affects | Status |
+|---|---|---|---|---|
+| D1 | a non-UTF-8 byte silently discards all following output | critical | ≤ 0.1.5 | open |
+| D2 | SIGTERM / SIGHUP unhandled: no result, no footer, no notification | critical | ≤ 0.1.5 | open, planned 0.2.0 |
+| D3 | only the direct child is killed; launcher workers are orphaned | critical | ≤ 0.1.5 | open, planned 0.2.0 |
+| D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | open |
+| D5 | `run_job` raises when the log directory cannot be created | critical | ≤ 0.1.5 | open |
+| D6 | `get_tail()` loads the whole file into memory | serious | ≤ 0.1.5 | open |
+| D7 | no log rotation or size cap | serious | ≤ 0.1.5 | open, planned 0.2.0 |
+| D8 | no GPU awareness | serious | ≤ 0.1.5 | open, planned 0.3.0 |
+| D9 | no cross-job registry | serious | ≤ 0.1.5 | open, planned 0.4.0 |
+| D10 | timeout sends SIGKILL with no SIGTERM first | serious | ≤ 0.1.5 | open, planned 0.2.0 |
+| D11 | a FIFO named like an output hangs the wrapper after the job | serious | ≤ 0.1.5 | open |
+| D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | open |
+| D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | open |
+| D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | open |
+| D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | open |
+| D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | open |
+
+---
+
+## D1 — a non-UTF-8 byte silently discards all following output
+
+**Symptom.** The job prints a raw byte that is not valid UTF-8 (C and CUDA
+extensions do this routinely). Everything the job writes after that byte is
+missing from `stdout.log` and `combined.log`, and the result still says
+`success`.
+
+**Cause.** `Popen(..., text=True)` decodes strictly. The first bad byte raises
+`UnicodeDecodeError` inside the reader thread, its bare `except Exception: pass`
+swallows it, and the thread exits. Status depends only on the exit code.
+
+**Reproduction.** `faults.emits_invalid_utf8()`: `BEFORE` survives, `AFTER 4`
+does not.
+
+**Tests.** `test_output_shapes.py::TestInvalidUTF8`.
+
+## D2 — SIGTERM / SIGHUP unhandled
+
+**Symptom.** `scancel`, Slurm preemption and a dropped SSH session kill the
+wrapper at rc −15 / −1 with no footer and no notification.
+
+**Tests.** `test_signals.py::TestSigterm`, `TestSighup`.
+
+## D3 — orphaned workers
+
+**Symptom.** Killing the wrapper, or a timeout, leaves grandchildren running.
+A torchrun worker keeps its GPU memory after the wrapper is gone.
+
+**Tests.** `test_signals.py::test_sigint_does_not_orphan_the_job`,
+`test_process_shapes.py::TestGrandchildren`.
+
+## D4 — artifact scan claims files this job did not create
+
+**Symptom.** `find_artifacts` takes any file in the working directory whose
+name matches a pattern and whose mtime is after the job started. On a shared
+directory that attaches, and emails, a co-tenant's outputs.
+
+**Measured.** Job A attached `jobB_other_user_results.json`.
+
+**Tests.** `test_concurrency.py::TestArtifactScoping`,
+`test_artifact_safety.py::TestOwnership`, `TestRunWindow`.
+
+## D5 — `run_job` raises when the log directory cannot be created
+
+**Symptom.** An unwritable or over-quota home makes `run_job` raise
+`PermissionError` (or `NotADirectoryError`) before the job starts, breaking the
+never-raises contract. On HPC a full home is normal.
+
+**Tests.** `test_filesystem.py::TestUnwritableHome`.
+
+## D6 — `get_tail()` reads the whole file
+
+**Measured.** A 25 MB log costs about 52 MB extra to read 50 lines.
+
+**Tests.** `test_output_shapes.py::TestTailReader::test_tail_memory_is_independent_of_file_size`.
+
+## D7 — no log rotation or size cap
+
+**Tests.** `test_output_shapes.py::TestVolume::test_log_growth_is_bounded`.
+
+Deferred on purpose. A cap has to keep the head and the tail and survive a
+wrapper crash without losing the tail, which is the part that explains the
+failure. That needs the supervisor work in 0.2.0.
+
+## D8, D9
+
+Absences rather than defects. Covered by the 0.3.0 GPU observer and the 0.4.0
+registry designs.
+
+## D10 — no graceful shutdown ladder
+
+Found by the harness: `test_a_child_ignoring_sigterm_is_escalated` passed,
+which disproved the assumption behind it. The timeout path calls
+`proc.kill()` directly.
+
+**Tests.** `test_process_shapes.py::TestShutdownLadder`.
+
+## D11 — a FIFO named like an output hangs the wrapper
+
+**Symptom.** Anyone who can write to the run directory creates a named pipe
+called `metrics.json`. `find_artifacts` accepts it (it never checks for a
+regular file), and `extract_metrics` then blocks forever in `open()`, so the
+notification is never sent and the wrapper never exits.
+
+**Reproduction.** `os.mkfifo("metrics.json")` in the run directory; the
+metrics reader is still blocked after 3 s.
+
+**Tests.** `test_artifact_safety.py::TestFileTypes`.
+
+## D12 — non-executable command reported as a launcher error
+
+**Symptom.** `gpualert run -- ./train.sh` without the execute bit records
+"Unexpected launcher error: PermissionError" with exit code −99, which the CLI
+maps to 1. A shell reports 126 for the same command.
+
+**Tests.** `test_contracts.py::TestExitCodeFidelity::test_a_non_executable_command_reports_126`.
+
+## D13 — `run_job` raises from a deleted working directory
+
+**Symptom.** The log header calls `os.getcwd()`, which raises
+`FileNotFoundError` once the directory has been removed (a common result of
+cleaning a scratch directory while a shell is still inside it).
+
+**Tests.** `test_filesystem.py::TestDeletedWorkingDirectory`.
+
+## D14 — the artifact scan reads tool state and hidden directories
+
+**Symptom.** A job started from `$HOME` scans `~/.gpualert/logs/` three levels
+deep and attaches every log written during the run, including other jobs'.
+Hidden directories such as `.ssh`, `.aws` and `.config` are scanned like any
+other.
+
+**Tests.** `test_artifact_safety.py::TestToolState`.
+
+## D15 — attachments re-opened by path at send time
+
+**Symptom.** The scan rejects outward symlinks, but the notifier opens each
+attachment again by path. A file replaced by a symlink between the scan and the
+send is followed, so a file outside the run directory can still be attached.
+
+**Tests.** `test_artifact_safety.py::TestReadTimeContainment`.
+
+## D16 — overflow zip written into the working directory
+
+**Symptom.** When `prepare_attachments` has no log file to anchor on, it writes
+`artifacts_overflow.zip` into the current directory. That can overwrite a file
+of the same name, and the next run in that directory picks the zip up as an
+artifact (`*.zip` is a default pattern). Found because the harness left the zip
+in the repo root.
+
+**Tests.** `test_contracts.py::TestNonSilentBudget::test_overflow_zip_is_never_written_into_the_working_directory`.
