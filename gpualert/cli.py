@@ -38,6 +38,7 @@ from gpualert.slurm import (
     is_slurm_available,
     poll_job,
 )
+from gpualert.types import JobResult
 
 app = typer.Typer(
     help="GPUAlert — GPU/Slurm job notifications with automatic log delivery.",
@@ -87,7 +88,7 @@ def _cwd_or_empty() -> str:
         return ""
 
 
-def _shell_exit_code(result) -> int:
+def _shell_exit_code(result: JobResult) -> int:
     """Map a JobResult to the exit status a shell or Slurm script expects.
 
     The wrapped job's own code is passed through so `gpualert run -- cmd`
