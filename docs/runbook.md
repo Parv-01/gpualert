@@ -179,6 +179,16 @@ combined log can grow past 25 MB and get dropped entirely. Workarounds:
 - Have your training script rotate or truncate its own stdout, so the wrapper writes less.
 - Use `--no-notify` and then send the logs separately.
 
+## Report says the log directory "could not be used"
+
+Your home is read-only or over quota, so GPUAlert wrote this job's logs to a private temp directory
+instead; the note gives the path. Temp directories are cleaned by the system, so copy anything you
+need. To avoid it, free space in `~/.gpualert/logs`, or point logs at scratch:
+
+```bash
+export GPUALERT_LOG_DIR=/scratch/$USER/gpualert-logs
+```
+
 ## Recovering logs from a completed job
 
 ```bash

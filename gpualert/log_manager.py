@@ -1,9 +1,12 @@
 """
 gpualert.log_manager — The log file guarantee.
 
-Every execution creates log files at ~/.gpualert/logs/<date>_<job_id_short>/.
-Files are created BEFORE any subprocess starts, so they exist on disk even
-if the job crashes or the process is killed.
+Every execution creates log files at ~/.gpualert/logs/<date>_<job_id_short>/,
+or under $GPUALERT_LOG_DIR when that is set. Files are created BEFORE any
+subprocess starts, so they exist on disk even if the job crashes or the
+process is killed. When the usual directory cannot be written (a full or
+read-only home is normal on HPC), the launcher falls back to a private
+temporary directory rather than failing; see create_fallback_log_dir.
 
 All write_to_log calls are best-effort: they catch every exception so a
 logging failure can never mask the underlying job result.
@@ -13,14 +16,33 @@ from __future__ import annotations
 
 import logging
 import os
+import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+LOG_DIR_ENV = "GPUALERT_LOG_DIR"
+
+
+def log_dir_label() -> str:
+    """Where logs are meant to go, for display. Touches nothing on disk."""
+    return os.environ.get(LOG_DIR_ENV, "").strip() or "~/.gpualert/logs/"
+
 
 def get_log_dir() -> Path:
-    """Returns ~/.gpualert/logs (creates it if missing). Permissions 700."""
+    """Returns the log base directory, creating it if missing.
+
+    $GPUALERT_LOG_DIR wins when set (point it at scratch on a cluster with a
+    small home quota). Otherwise ~/.gpualert/logs with permissions 700. A
+    directory the user chose is left with whatever permissions it has, since
+    it may be deliberately shared with a group.
+    """
+    override = os.environ.get(LOG_DIR_ENV, "").strip()
+    if override:
+        d = Path(override).expanduser()
+        d.mkdir(parents=True, exist_ok=True)
+        return d
     d = Path.home() / ".gpualert" / "logs"
     d.mkdir(parents=True, exist_ok=True)
     try:
@@ -46,6 +68,20 @@ def create_job_log_dir(job_id: str, command: str) -> Path:
         fp = job_dir / fname
         # touch — create empty file if missing
         with open(fp, "a"):
+            pass
+    return job_dir
+
+
+def create_fallback_log_dir(job_id: str) -> Path:
+    """A private per-job log directory under the system temp dir.
+
+    mkdtemp creates it with mode 700 and an unpredictable name, so another
+    user on a shared /tmp can neither guess it in advance nor read it.
+    """
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    job_dir = Path(tempfile.mkdtemp(prefix=f"gpualert-{stamp}_{(job_id or 'no-id')[:8]}-"))
+    for fname in ("stdout.log", "stderr.log", "combined.log"):
+        with open(job_dir / fname, "a"):
             pass
     return job_dir
 

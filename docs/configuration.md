@@ -86,6 +86,18 @@ plaintext password out of `config.toml` on first load and prints one stdout line
 | `dry_run` | bool   | `false`              | If `true`, all runs are dry-run by default. |
 | `log_dir` | string | `~/.gpualert/logs`   | Where per-job log directories live. |
 
+## Environment variables
+
+| Variable                  | Effect |
+|---------------------------|--------|
+| `GPUALERT_EMAIL_PASSWORD` | SMTP password. Wins over the keyring and the encrypted file. |
+| `GPUALERT_LOG_DIR`        | Base directory for per-job logs instead of `~/.gpualert/logs`. Use it to put logs on scratch when the home quota is small. Created if missing; its permissions are left as they are. (Added in 0.1.6.) |
+
+If the log directory cannot be created or written (read-only home, quota exceeded), the job still
+runs. Its logs go to a private directory under the system temp dir (mode 700, random name), and
+the report carries a note with the path. If even that fails, output is kept in memory and the report
+holds the last lines of each stream.
+
 ## Inspecting and resetting
 
 ```bash

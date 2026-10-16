@@ -28,6 +28,7 @@ from gpualert.config import (
 )
 from gpualert.config_manager import init_config_interactive
 from gpualert.launcher import run_job
+from gpualert.log_manager import log_dir_label
 from gpualert.notifier.email_notifier import get_notifier
 from gpualert.slurm import (
     SlurmNotAvailableError,
@@ -113,7 +114,7 @@ def run(
         Panel(
             f"[bold cyan]GPUAlert[/bold cyan] v{__version__}\n"
             f"[dim]Command:[/dim] {' '.join(cmd)}\n"
-            f"[dim]Logs   :[/dim] ~/.gpualert/logs/",
+            f"[dim]Logs   :[/dim] {log_dir_label()}",
             title="Starting Job",
             border_style="cyan",
         )

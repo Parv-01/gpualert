@@ -40,6 +40,10 @@ class JobResult:
     # "Artifact attachment disabled by config"). Rendered as a NOTES
     # section in the email body. (Added in 0.1.2.)
     notes: list = None  # type: ignore[assignment]
+    # Working directory the job was launched in, as an absolute path. The
+    # artifact scan is scoped to it. Empty when it could not be determined
+    # (for example, the directory had been deleted). (Added in 0.1.6.)
+    cwd: str = ""
 
     def __post_init__(self) -> None:
         if self.artifacts is None:

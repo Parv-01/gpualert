@@ -14,7 +14,7 @@ entry says which part is left and where it is planned).
 | D2 | SIGTERM / SIGHUP unhandled: no result, no footer, no notification | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D3 | only the direct child is killed; launcher workers are orphaned | critical | ≤ 0.1.5 | open, planned 0.2.0 |
 | D4 | artifact scan claims files this job did not create | critical | ≤ 0.1.5 | open |
-| D5 | `run_job` raises when the log directory cannot be created | critical | ≤ 0.1.5 | open |
+| D5 | `run_job` raises when the log directory cannot be created | critical | ≤ 0.1.5 | fixed in 0.1.6 |
 | D6 | `get_tail()` loads the whole file into memory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D7 | no log rotation or size cap | serious | ≤ 0.1.5 | open, planned 0.2.0 |
 | D8 | no GPU awareness | serious | ≤ 0.1.5 | open, planned 0.3.0 |
@@ -22,7 +22,7 @@ entry says which part is left and where it is planned).
 | D10 | timeout sends SIGKILL with no SIGTERM first | serious | ≤ 0.1.5 | open, planned 0.2.0 |
 | D11 | a FIFO named like an output hangs the wrapper after the job | serious | ≤ 0.1.5 | open |
 | D12 | a non-executable command exits 1 as a launcher error instead of 126 | minor | ≤ 0.1.5 | open |
-| D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | open |
+| D13 | `run_job` raises when started from a deleted directory | serious | ≤ 0.1.5 | fixed in 0.1.6 |
 | D14 | the artifact scan reads `~/.gpualert` and other hidden directories | critical | ≤ 0.1.5 | open |
 | D15 | attachments are re-opened by path, so a post-scan symlink swap is followed | serious | ≤ 0.1.5 | open |
 | D16 | the overflow zip can be written into the working directory | minor | ≤ 0.1.5 | open |
@@ -85,7 +85,13 @@ directory that attaches, and emails, a co-tenant's outputs.
 `PermissionError` (or `NotADirectoryError`) before the job starts, breaking the
 never-raises contract. On HPC a full home is normal.
 
-**Tests.** `test_filesystem.py::TestUnwritableHome`.
+**Tests.** `test_filesystem.py::TestUnwritableHome`, `tests/test_log_fallback.py`.
+
+**Fix (0.1.6).** `$GPUALERT_LOG_DIR` if set, else `~/.gpualert/logs`; if that
+cannot be created *or written* (the header write is part of the attempt, which
+is what catches a home over quota), a private `mkdtemp` directory; if that
+fails too, memory only, with the stream tails kept for the report. Every
+fallback adds a note naming where the logs went.
 
 ## D6 — `get_tail()` reads the whole file
 
@@ -147,7 +153,11 @@ maps to 1. A shell reports 126 for the same command.
 `FileNotFoundError` once the directory has been removed (a common result of
 cleaning a scratch directory while a shell is still inside it).
 
-**Tests.** `test_filesystem.py::TestDeletedWorkingDirectory`.
+**Tests.** `test_filesystem.py::TestDeletedWorkingDirectory`, `tests/test_log_fallback.py`.
+
+**Fix (0.1.6).** The header records `<unavailable: FileNotFoundError>` instead
+of raising, and `JobResult.cwd` is left empty so the artifact scan is skipped
+rather than run against whatever directory a later lookup resolves to.
 
 ## D14 — the artifact scan reads tool state and hidden directories
 

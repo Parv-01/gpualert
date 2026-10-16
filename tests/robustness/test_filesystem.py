@@ -32,11 +32,6 @@ requires_permission_bits = pytest.mark.skipif(
 
 class TestUnwritableHome:
     @requires_permission_bits
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D5: create_job_log_dir runs outside the try block, so an "
-        "unwritable home makes run_job raise PermissionError",
-    )
     def test_unwritable_home_still_returns_a_result(self, tmp_path, monkeypatch):
         locked = tmp_path / "locked_home"
         locked.mkdir()
@@ -53,10 +48,6 @@ class TestUnwritableHome:
             locked.chmod(stat.S_IRWXU)
 
     @requires_permission_bits
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D5: the same path raises when the job itself would have succeeded",
-    )
     def test_unwritable_home_preserves_the_child_exit_code(self, tmp_path, monkeypatch):
         locked = tmp_path / "locked_home2"
         locked.mkdir()
@@ -71,11 +62,6 @@ class TestUnwritableHome:
         finally:
             locked.chmod(stat.S_IRWXU)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D5: a HOME that is a file makes mkdir raise NotADirectoryError, "
-        "which escapes run_job for any user, root included",
-    )
     def test_home_that_is_not_a_directory_still_returns_a_result(self, tmp_path, monkeypatch):
         not_a_dir = tmp_path / "home_is_a_file"
         not_a_dir.write_text("")
@@ -117,11 +103,6 @@ class TestDiskFull:
 
 class TestDeletedWorkingDirectory:
     @pytest.mark.skipif(os.name != "posix", reason="Windows cannot remove a busy cwd")
-    @pytest.mark.xfail(
-        strict=True,
-        reason="D13: the log header calls os.getcwd(), which raises once the "
-        "working directory has been removed, so run_job raises",
-    )
     def test_run_from_a_deleted_directory_returns_a_result(
         self, isolated_home, tmp_path, monkeypatch
     ):
