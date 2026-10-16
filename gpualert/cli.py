@@ -69,6 +69,7 @@ def _print_result_table(result) -> None:
 
 # ─── gpualert run ────────────────────────────────────────────────────────────
 
+
 def _shell_exit_code(result) -> int:
     """Map a JobResult to the exit status a shell or Slurm script expects.
 

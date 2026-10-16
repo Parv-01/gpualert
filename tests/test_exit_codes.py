@@ -31,8 +31,11 @@ posix_only = pytest.mark.skipif(sys.platform == "win32", reason="POSIX signals")
 
 def _result(status: str, exit_code):
     return JobResult(
-        command="x", job_id="t", start_time=datetime.now(),
-        status=status, exit_code=exit_code,
+        command="x",
+        job_id="t",
+        start_time=datetime.now(),
+        status=status,
+        exit_code=exit_code,
     )
 
 
@@ -52,15 +55,15 @@ class TestMapping:
             ("failed", 1, 1),
             ("failed", 3, 3),
             ("failed", 127, 127),
-            ("failed", -9, 137),     # SIGKILL
-            ("failed", -11, 139),    # SIGSEGV
-            ("failed", -15, 143),    # SIGTERM
+            ("failed", -9, 137),  # SIGKILL
+            ("failed", -11, 139),  # SIGSEGV
+            ("failed", -15, 143),  # SIGTERM
             ("timeout", -1, 124),
             ("interrupted", -2, 130),
-            ("failed", -99, 1),      # internal launcher error
+            ("failed", -99, 1),  # internal launcher error
             ("failed", None, 1),
             ("success", None, 0),
-            ("failed", 300, 1),      # out of shell range
+            ("failed", 300, 1),  # out of shell range
         ],
     )
     def test_maps_to_shell_status(self, status, code, expected):

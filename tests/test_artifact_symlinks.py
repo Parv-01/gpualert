@@ -15,7 +15,9 @@ import pytest
 
 from gpualert.artifacts import find_artifacts
 
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="symlinks need privileges on Windows")
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="symlinks need privileges on Windows"
+)
 
 
 def _names(found):
